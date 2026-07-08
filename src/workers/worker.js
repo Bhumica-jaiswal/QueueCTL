@@ -12,6 +12,7 @@ class Worker {
     this.pollIntervalMs = pollIntervalMs;
     this.logger = logger;
     this.isRunning = false;
+    this.isStopping = false;
     this.runPromise = null;
   }
 
@@ -21,12 +22,14 @@ class Worker {
     }
 
     this.isRunning = true;
+    this.isStopping = false;
     this.logger.log(`Worker ${this.id} started`);
     this.runPromise = this.runLoop();
     return this.runPromise;
   }
 
   async stop() {
+    this.isStopping = true;
     this.isRunning = false;
     if (this.runPromise) {
       await this.runPromise;
@@ -38,7 +41,7 @@ class Worker {
       let claimedJob = null;
 
       try {
-        claimedJob = this.jobRepository.claimNextPendingJob();
+        claimedJob = this.jobRepository.claimNextJob(this.id);
         if (!claimedJob) {
           await sleep(this.pollIntervalMs);
           continue;
@@ -64,9 +67,15 @@ class Worker {
           this.logger.error(`Worker ${this.id} loop error: ${error.message}`);
         }
 
+        if (this.isStopping) {
+          break;
+        }
+
         await sleep(this.pollIntervalMs);
       }
     }
+
+    this.logger.log(`Worker ${this.id} stopped`);
   }
 }
 

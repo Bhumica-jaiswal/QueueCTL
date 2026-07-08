@@ -64,15 +64,16 @@ describe("jobRepository", () => {
     expect(counts.byState.failed).toBe(1);
   });
 
-  test("claimNextPendingJob claims once and marks processing", () => {
+  test("claimNextJob claims once, marks processing, and records worker", () => {
     repo.createJob({ id: "job-4", command: "echo claim", state: "pending" });
 
-    const firstClaim = repo.claimNextPendingJob();
+    const firstClaim = repo.claimNextJob("worker-1");
     expect(firstClaim).toBeTruthy();
     expect(firstClaim.id).toBe("job-4");
     expect(firstClaim.state).toBe("processing");
+    expect(firstClaim.worker_id).toBe("worker-1");
 
-    const secondClaim = repo.claimNextPendingJob();
+    const secondClaim = repo.claimNextJob("worker-2");
     expect(secondClaim).toBeNull();
   });
 

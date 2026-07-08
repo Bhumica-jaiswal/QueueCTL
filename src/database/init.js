@@ -15,6 +15,10 @@ const CREATE_JOBS_TABLE_SQL = `
   )
 `;
 
+const ADD_JOBS_WORKER_ID_COLUMN_SQL = `
+  ALTER TABLE jobs ADD COLUMN worker_id TEXT
+`;
+
 const CREATE_CONFIG_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,
@@ -32,6 +36,12 @@ function initDatabase(db = getConnection()) {
       db.exec(CREATE_JOBS_TABLE_SQL);
       db.exec(CREATE_CONFIG_TABLE_SQL);
       db.exec(CREATE_JOBS_STATE_INDEX_SQL);
+
+      const jobsColumns = db.prepare("PRAGMA table_info(jobs)").all();
+      const hasWorkerId = jobsColumns.some((column) => column.name === "worker_id");
+      if (!hasWorkerId) {
+        db.exec(ADD_JOBS_WORKER_ID_COLUMN_SQL);
+      }
     });
 
     transaction();

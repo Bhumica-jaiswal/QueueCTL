@@ -7,6 +7,7 @@ const ALLOWED_UPDATE_FIELDS = new Set([
   "next_run_at",
   "output",
   "error",
+  "worker_id",
 ]);
 
 function createJobRepository(db) {
@@ -21,7 +22,8 @@ function createJobRepository(db) {
       updated_at,
       next_run_at,
       output,
-      error
+      error,
+      worker_id
     ) VALUES (
       @id,
       @command,
@@ -32,7 +34,8 @@ function createJobRepository(db) {
       @updated_at,
       @next_run_at,
       @output,
-      @error
+      @error,
+      @worker_id
     )
   `);
 
@@ -45,7 +48,7 @@ function createJobRepository(db) {
     "SELECT * FROM jobs WHERE state = 'pending' ORDER BY created_at ASC LIMIT 1"
   );
   const markProcessingStatement = db.prepare(
-    "UPDATE jobs SET state = 'processing', updated_at = ? WHERE id = ? AND state = 'pending'"
+    "UPDATE jobs SET state = 'processing', worker_id = ?, updated_at = ? WHERE id = ? AND state = 'pending'"
   );
   const markCompletedStatement = db.prepare(
     "UPDATE jobs SET state = 'completed', output = ?, error = NULL, updated_at = ? WHERE id = ?"
@@ -70,6 +73,7 @@ function createJobRepository(db) {
       next_run_at: job.next_run_at ?? now,
       output: job.output ?? null,
       error: job.error ?? null,
+      worker_id: job.worker_id ?? null,
     };
 
     try {
@@ -145,14 +149,14 @@ function createJobRepository(db) {
     }
   }
 
-  const claimNextPendingJobTransaction = db.transaction(() => {
+  const claimNextJobTransaction = db.transaction((workerId) => {
     const next = findNextPendingStatement.get();
     if (!next) {
       return null;
     }
 
     const now = new Date().toISOString();
-    const result = markProcessingStatement.run(now, next.id);
+    const result = markProcessingStatement.run(String(workerId), now, next.id);
     if (result.changes === 0) {
       return null;
     }
@@ -160,14 +164,22 @@ function createJobRepository(db) {
     return findByIdStatement.get(next.id);
   });
 
-  function claimNextPendingJob() {
+  function claimNextJob(workerId) {
+    if (!workerId) {
+      throw new Error("workerId is required to claim a job");
+    }
+
     try {
-      return claimNextPendingJobTransaction();
+      return claimNextJobTransaction.immediate(workerId);
     } catch (error) {
       throw new Error(`Failed to claim pending job: ${error.message}`, {
         cause: error,
       });
     }
+  }
+
+  function claimNextPendingJob() {
+    return claimNextJob("unknown");
   }
 
   function markJobCompleted(id, output = null) {
@@ -230,6 +242,7 @@ function createJobRepository(db) {
     findAll,
     findByState,
     updateJob,
+    claimNextJob,
     claimNextPendingJob,
     markJobCompleted,
     markJobFailed,

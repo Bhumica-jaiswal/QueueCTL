@@ -106,4 +106,39 @@ describe("worker processing", () => {
     expect(updated.state).toBe("completed");
     expect(executor.execute).toHaveBeenCalledTimes(1);
   });
+
+  test("five workers process multiple jobs without duplicates", async () => {
+    const jobIds = ["job-1", "job-2", "job-3", "job-4", "job-5", "job-6"];
+    for (const jobId of jobIds) {
+      repo.createJob({ id: jobId, command: `run ${jobId}`, state: "pending" });
+    }
+
+    const executedCommands = [];
+    const executor = {
+      execute: jest.fn().mockImplementation(async (command) => {
+        executedCommands.push(command);
+        await sleep(30);
+        return { exitCode: 0, stdout: command, stderr: "" };
+      }),
+    };
+
+    const manager = new WorkerManager({
+      count: 5,
+      jobRepository: repo,
+      pollIntervalMs: 10,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor,
+    });
+
+    manager.start();
+    await sleep(250);
+    await manager.stop();
+
+    const completedJobs = repo.findByState("completed");
+    const uniqueCommands = new Set(executedCommands);
+
+    expect(completedJobs).toHaveLength(jobIds.length);
+    expect(executedCommands).toHaveLength(jobIds.length);
+    expect(uniqueCommands.size).toBe(jobIds.length);
+  });
 });
