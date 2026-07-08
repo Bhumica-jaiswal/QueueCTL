@@ -5,9 +5,9 @@ function sleep(ms) {
 }
 
 class Worker {
-  constructor({ id, jobRepository, executor, pollIntervalMs = 1000, logger = console }) {
+  constructor({ id, queueService, executor, pollIntervalMs = 1000, logger = console }) {
     this.id = id;
-    this.jobRepository = jobRepository;
+    this.queueService = queueService;
     this.executor = executor;
     this.pollIntervalMs = pollIntervalMs;
     this.logger = logger;
@@ -41,7 +41,7 @@ class Worker {
       let claimedJob = null;
 
       try {
-        claimedJob = this.jobRepository.claimNextJob(this.id);
+        claimedJob = this.queueService.claimNextJob(this.id);
         if (!claimedJob) {
           await sleep(this.pollIntervalMs);
           continue;
@@ -51,17 +51,17 @@ class Worker {
         const result = await this.executor.execute(claimedJob.command);
 
         if (result.exitCode === 0) {
-          this.jobRepository.markJobCompleted(claimedJob.id, result.stdout);
+          this.queueService.completeJob(claimedJob.id, result.stdout);
           this.logger.log(`Worker ${this.id} completed job ${claimedJob.id}`);
         } else {
           const errorMessage =
             result.stderr || `Command exited with code ${result.exitCode}`;
-          this.jobRepository.markJobFailed(claimedJob.id, errorMessage);
+          this.queueService.failJob(claimedJob.id, errorMessage);
           this.logger.log(`Worker ${this.id} failed job ${claimedJob.id}`);
         }
       } catch (error) {
         if (claimedJob) {
-          this.jobRepository.markJobFailed(claimedJob.id, error.message);
+          this.queueService.failJob(claimedJob.id, error.message);
           this.logger.log(`Worker ${this.id} failed job ${claimedJob.id}`);
         } else {
           this.logger.error(`Worker ${this.id} loop error: ${error.message}`);

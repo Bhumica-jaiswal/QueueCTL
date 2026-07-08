@@ -37,21 +37,6 @@ describe("jobRepository", () => {
     expect(pendingJobs[0].id).toBe("job-1");
   });
 
-  test("updateJob", () => {
-    repo.createJob({ id: "job-1", command: "echo hello" });
-
-    const updated = repo.updateJob("job-1", {
-      state: "completed",
-      output: "done",
-      attempts: 1,
-    });
-
-    expect(updated).toBeTruthy();
-    expect(updated.state).toBe("completed");
-    expect(updated.output).toBe("done");
-    expect(updated.attempts).toBe(1);
-  });
-
   test("getJobCounts", () => {
     repo.createJob({ id: "job-1", command: "echo one", state: "pending" });
     repo.createJob({ id: "job-2", command: "echo two", state: "pending" });
@@ -77,16 +62,36 @@ describe("jobRepository", () => {
     expect(secondClaim).toBeNull();
   });
 
-  test("markJobCompleted and markJobFailed", () => {
+  test("claimNextJob claims failed jobs only when retry time is reached", () => {
+    repo.createJob({
+      id: "job-future",
+      command: "echo later",
+      state: "failed",
+      next_run_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    repo.createJob({
+      id: "job-ready",
+      command: "echo now",
+      state: "failed",
+      next_run_at: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    const claimed = repo.claimNextJob("worker-1");
+
+    expect(claimed.id).toBe("job-ready");
+    expect(claimed.state).toBe("processing");
+    expect(repo.findById("job-future").state).toBe("failed");
+  });
+
+  test("markJobCompleted only completes processing jobs", () => {
     repo.createJob({ id: "job-5", command: "echo done", state: "processing" });
 
     const completed = repo.markJobCompleted("job-5", "ok");
     expect(completed.state).toBe("completed");
     expect(completed.output).toBe("ok");
 
-    repo.createJob({ id: "job-6", command: "echo fail", state: "processing" });
-    const failed = repo.markJobFailed("job-6", "boom");
-    expect(failed.state).toBe("failed");
-    expect(failed.error).toBe("boom");
+    repo.createJob({ id: "job-6", command: "echo pending", state: "pending" });
+    expect(repo.markJobCompleted("job-6", "nope")).toBeNull();
+    expect(repo.findById("job-6").state).toBe("pending");
   });
 });

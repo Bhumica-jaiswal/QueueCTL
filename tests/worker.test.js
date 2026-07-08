@@ -1,6 +1,9 @@
 const { createConnection } = require("../src/database/connection");
 const { initDatabase } = require("../src/database/init");
+const { createConfigRepository } = require("../src/repositories/configRepository");
 const { createJobRepository } = require("../src/repositories/jobRepository");
+const { createConfigService } = require("../src/services/configService");
+const { createQueueService } = require("../src/services/queueService");
 const { WorkerManager } = require("../src/workers/workerManager");
 
 function sleep(ms) {
@@ -12,11 +15,15 @@ function sleep(ms) {
 describe("worker processing", () => {
   let db;
   let repo;
+  let service;
 
   beforeEach(() => {
     db = createConnection({ databasePath: ":memory:" });
     initDatabase(db);
     repo = createJobRepository(db);
+    const configRepository = createConfigRepository(db);
+    const configService = createConfigService({ configRepository });
+    service = createQueueService({ jobRepository: repo, configService });
   });
 
   afterEach(() => {
@@ -36,7 +43,7 @@ describe("worker processing", () => {
 
     const manager = new WorkerManager({
       count: 1,
-      jobRepository: repo,
+      queueService: service,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -53,7 +60,12 @@ describe("worker processing", () => {
   });
 
   test("worker fails unsuccessful job", async () => {
-    repo.createJob({ id: "job-b", command: "exit 1", state: "pending" });
+    repo.createJob({
+      id: "job-b",
+      command: "exit 1",
+      state: "pending",
+      max_retries: 2,
+    });
 
     const executor = {
       execute: jest.fn().mockResolvedValue({
@@ -65,7 +77,7 @@ describe("worker processing", () => {
 
     const manager = new WorkerManager({
       count: 1,
-      jobRepository: repo,
+      queueService: service,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -92,7 +104,7 @@ describe("worker processing", () => {
 
     const manager = new WorkerManager({
       count: 3,
-      jobRepository: repo,
+      queueService: service,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -124,7 +136,7 @@ describe("worker processing", () => {
 
     const manager = new WorkerManager({
       count: 5,
-      jobRepository: repo,
+      queueService: service,
       pollIntervalMs: 10,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,

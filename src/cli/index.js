@@ -3,7 +3,12 @@
 const { Command } = require("commander");
 const { getConnection, closeConnection } = require("../database/connection");
 const { initDatabase } = require("../database/init");
+const { createConfigRepository } = require("../repositories/configRepository");
 const { createJobRepository } = require("../repositories/jobRepository");
+const {
+  createConfigService,
+  ConfigValidationError,
+} = require("../services/configService");
 const {
   createQueueService,
   QueueValidationError,
@@ -14,7 +19,9 @@ const db = getConnection();
 initDatabase(db);
 
 const jobRepository = createJobRepository(db);
-const queueService = createQueueService({ jobRepository });
+const configRepository = createConfigRepository(db);
+const configService = createConfigService({ configRepository });
+const queueService = createQueueService({ jobRepository, configService });
 
 async function runWorkers(count) {
   const normalizedCount = Number(count);
@@ -24,7 +31,7 @@ async function runWorkers(count) {
 
   const manager = new WorkerManager({
     count: normalizedCount,
-    jobRepository,
+    queueService,
   });
 
   manager.start();
@@ -160,6 +167,76 @@ program
       console.log(`dead: ${status.dead}`);
     } catch (error) {
       console.error(`Failed to read queue status: ${error.message}`);
+      process.exitCode = 1;
+    }
+  });
+
+const dlqCommand = program.command("dlq").description("Manage dead letter jobs");
+
+dlqCommand
+  .command("list")
+  .description("List dead letter jobs")
+  .action(() => {
+    try {
+      const jobs = queueService.listDeadJobs();
+      if (jobs.length === 0) {
+        console.log("Dead letter queue is empty");
+        return;
+      }
+
+      console.table(
+        jobs.map((job) => ({
+          id: job.id,
+          attempts: job.attempts,
+          max_retries: job.max_retries,
+          command: job.command,
+          error: job.error,
+          updated_at: job.updated_at,
+        }))
+      );
+    } catch (error) {
+      console.error(`Failed to list dead letter jobs: ${error.message}`);
+      process.exitCode = 1;
+    }
+  });
+
+dlqCommand
+  .command("retry")
+  .description("Retry a dead letter job")
+  .argument("<jobId>", "Dead letter job id")
+  .action((jobId) => {
+    try {
+      const job = queueService.retryDeadJob(jobId);
+      console.log(`Retried job '${job.id}' with state '${job.state}'.`);
+    } catch (error) {
+      if (error instanceof QueueValidationError) {
+        console.error(error.message);
+      } else {
+        console.error(`Failed to retry dead letter job: ${error.message}`);
+      }
+
+      process.exitCode = 1;
+    }
+  });
+
+const configCommand = program.command("config").description("Manage queue config");
+
+configCommand
+  .command("set")
+  .description("Set a queue config value")
+  .argument("<key>", "Config key")
+  .argument("<value>", "Config value")
+  .action((key, value) => {
+    try {
+      const savedValue = configService.set(key, value);
+      console.log(`Set ${key}=${savedValue}`);
+    } catch (error) {
+      if (error instanceof ConfigValidationError) {
+        console.error(error.message);
+      } else {
+        console.error(`Failed to set config: ${error.message}`);
+      }
+
       process.exitCode = 1;
     }
   });

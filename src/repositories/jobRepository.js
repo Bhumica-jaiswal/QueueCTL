@@ -1,15 +1,3 @@
-const ALLOWED_UPDATE_FIELDS = new Set([
-  "command",
-  "state",
-  "attempts",
-  "max_retries",
-  "updated_at",
-  "next_run_at",
-  "output",
-  "error",
-  "worker_id",
-]);
-
 function createJobRepository(db) {
   const insertJobStatement = db.prepare(`
     INSERT INTO jobs (
@@ -44,17 +32,29 @@ function createJobRepository(db) {
   const findByStateStatement = db.prepare(
     "SELECT * FROM jobs WHERE state = ? ORDER BY created_at ASC"
   );
-  const findNextPendingStatement = db.prepare(
-    "SELECT * FROM jobs WHERE state = 'pending' ORDER BY created_at ASC LIMIT 1"
+  const findNextClaimableStatement = db.prepare(`
+    SELECT *
+    FROM jobs
+    WHERE
+      state = 'pending'
+      OR (state = 'failed' AND next_run_at <= ?)
+    ORDER BY created_at ASC
+    LIMIT 1
+  `);
+  const markClaimedStatement = db.prepare(
+    "UPDATE jobs SET state = 'processing', worker_id = ?, updated_at = ? WHERE id = ? AND state IN ('pending', 'failed')"
   );
-  const markProcessingStatement = db.prepare(
-    "UPDATE jobs SET state = 'processing', worker_id = ?, updated_at = ? WHERE id = ? AND state = 'pending'"
+  const recordFailureStatement = db.prepare(
+    "UPDATE jobs SET state = 'failed', attempts = ?, error = ?, next_run_at = ?, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
+  );
+  const markDeadStatement = db.prepare(
+    "UPDATE jobs SET state = 'dead', attempts = ?, error = ?, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
   );
   const markCompletedStatement = db.prepare(
-    "UPDATE jobs SET state = 'completed', output = ?, error = NULL, updated_at = ? WHERE id = ?"
+    "UPDATE jobs SET state = 'completed', output = ?, error = NULL, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
   );
-  const markFailedStatement = db.prepare(
-    "UPDATE jobs SET state = 'failed', error = ?, updated_at = ? WHERE id = ?"
+  const retryDeadStatement = db.prepare(
+    "UPDATE jobs SET state = 'pending', attempts = 0, error = NULL, next_run_at = ?, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'dead'"
   );
   const getJobCountsStatement = db.prepare(
     "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state"
@@ -116,47 +116,13 @@ function createJobRepository(db) {
     }
   }
 
-  function updateJob(id, updates = {}) {
-    const entries = Object.entries(updates).filter(
-      ([key, value]) => ALLOWED_UPDATE_FIELDS.has(key) && value !== undefined
-    );
-
-    if (entries.length === 0) {
-      return findById(id);
-    }
-
-    const hasUpdatedAt = entries.some(([key]) => key === "updated_at");
-    if (!hasUpdatedAt) {
-      entries.push(["updated_at", new Date().toISOString()]);
-    }
-
-    const setClause = entries.map(([key]) => `${key} = ?`).join(", ");
-    const values = entries.map(([, value]) => value);
-
-    const statement = db.prepare(`UPDATE jobs SET ${setClause} WHERE id = ?`);
-
-    try {
-      const result = statement.run(...values, id);
-      if (result.changes === 0) {
-        return null;
-      }
-
-      return findById(id);
-    } catch (error) {
-      throw new Error(`Failed to update job '${id}': ${error.message}`, {
-        cause: error,
-      });
-    }
-  }
-
-  const claimNextJobTransaction = db.transaction((workerId) => {
-    const next = findNextPendingStatement.get();
+  const claimNextJobTransaction = db.transaction((workerId, now) => {
+    const next = findNextClaimableStatement.get(now);
     if (!next) {
       return null;
     }
 
-    const now = new Date().toISOString();
-    const result = markProcessingStatement.run(String(workerId), now, next.id);
+    const result = markClaimedStatement.run(String(workerId), now, next.id);
     if (result.changes === 0) {
       return null;
     }
@@ -170,16 +136,12 @@ function createJobRepository(db) {
     }
 
     try {
-      return claimNextJobTransaction.immediate(workerId);
+      return claimNextJobTransaction.immediate(workerId, new Date().toISOString());
     } catch (error) {
-      throw new Error(`Failed to claim pending job: ${error.message}`, {
+      throw new Error(`Failed to claim next job: ${error.message}`, {
         cause: error,
       });
     }
-  }
-
-  function claimNextPendingJob() {
-    return claimNextJob("unknown");
   }
 
   function markJobCompleted(id, output = null) {
@@ -198,10 +160,29 @@ function createJobRepository(db) {
     }
   }
 
-  function markJobFailed(id, errorMessage = null) {
+  function recordJobFailure(id, { attempts, maxRetries, backoffBase, errorMessage }) {
     try {
       const now = new Date().toISOString();
-      const result = markFailedStatement.run(errorMessage, now, id);
+      const nextAttempts = attempts + 1;
+
+      if (nextAttempts >= maxRetries) {
+        const result = markDeadStatement.run(nextAttempts, errorMessage, now, id);
+        if (result.changes === 0) {
+          return null;
+        }
+
+        return findById(id);
+      }
+
+      const delaySeconds = Math.pow(backoffBase, nextAttempts);
+      const nextRunAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+      const result = recordFailureStatement.run(
+        nextAttempts,
+        errorMessage,
+        nextRunAt,
+        now,
+        id
+      );
       if (result.changes === 0) {
         return null;
       }
@@ -209,6 +190,22 @@ function createJobRepository(db) {
       return findById(id);
     } catch (error) {
       throw new Error(`Failed to mark job '${id}' as failed: ${error.message}`, {
+        cause: error,
+      });
+    }
+  }
+
+  function retryDeadJob(id) {
+    try {
+      const now = new Date().toISOString();
+      const result = retryDeadStatement.run(now, now, id);
+      if (result.changes === 0) {
+        return null;
+      }
+
+      return findById(id);
+    } catch (error) {
+      throw new Error(`Failed to retry dead job '${id}': ${error.message}`, {
         cause: error,
       });
     }
@@ -241,11 +238,10 @@ function createJobRepository(db) {
     findById,
     findAll,
     findByState,
-    updateJob,
     claimNextJob,
-    claimNextPendingJob,
     markJobCompleted,
-    markJobFailed,
+    recordJobFailure,
+    retryDeadJob,
     getJobCounts,
   };
 }

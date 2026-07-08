@@ -30,6 +30,11 @@ const CREATE_JOBS_STATE_INDEX_SQL = `
   CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs (state)
 `;
 
+const DEFAULT_CONFIG = {
+  "max-retries": "0",
+  "backoff-base": "2",
+};
+
 function initDatabase(db = getConnection()) {
   try {
     const transaction = db.transaction(() => {
@@ -41,6 +46,15 @@ function initDatabase(db = getConnection()) {
       const hasWorkerId = jobsColumns.some((column) => column.name === "worker_id");
       if (!hasWorkerId) {
         db.exec(ADD_JOBS_WORKER_ID_COLUMN_SQL);
+      }
+
+      const setDefaultConfig = db.prepare(`
+        INSERT OR IGNORE INTO config (key, value)
+        VALUES (?, ?)
+      `);
+
+      for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
+        setDefaultConfig.run(key, value);
       }
     });
 

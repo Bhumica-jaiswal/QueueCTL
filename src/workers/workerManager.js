@@ -4,13 +4,13 @@ const { createExecutor } = require("./executor");
 class WorkerManager {
   constructor({
     count,
-    jobRepository,
+    queueService,
     pollIntervalMs = 1000,
     logger = console,
     executor = createExecutor(),
   }) {
     this.count = count;
-    this.jobRepository = jobRepository;
+    this.queueService = queueService;
     this.pollIntervalMs = pollIntervalMs;
     this.logger = logger;
     this.executor = executor;
@@ -26,7 +26,7 @@ class WorkerManager {
     for (let index = 1; index <= this.count; index += 1) {
       const worker = new Worker({
         id: index,
-        jobRepository: this.jobRepository,
+        queueService: this.queueService,
         executor: this.executor,
         pollIntervalMs: this.pollIntervalMs,
         logger: this.logger,
