@@ -31,7 +31,7 @@ const CREATE_JOBS_STATE_INDEX_SQL = `
 `;
 
 const DEFAULT_CONFIG = {
-  "max-retries": "0",
+  "max-retries": "3",
   "backoff-base": "2",
 };
 

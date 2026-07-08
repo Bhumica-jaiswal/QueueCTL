@@ -5,6 +5,8 @@ class QueueValidationError extends Error {
   }
 }
 
+const JOB_STATES = ["pending", "processing", "completed", "failed", "dead"];
+
 function createQueueService({ jobRepository, configService }) {
   if (!jobRepository) {
     throw new Error("queueService requires a jobRepository");
@@ -61,6 +63,12 @@ function createQueueService({ jobRepository, configService }) {
   function list({ state } = {}) {
     const normalizedState = typeof state === "string" ? state.trim() : "";
     if (normalizedState) {
+      if (!JOB_STATES.includes(normalizedState)) {
+        throw new QueueValidationError(
+          `Invalid state '${normalizedState}'. Allowed values: ${JOB_STATES.join(", ")}`
+        );
+      }
+
       return jobRepository.findByState(normalizedState);
     }
 

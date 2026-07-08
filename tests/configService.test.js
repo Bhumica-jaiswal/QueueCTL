@@ -22,7 +22,7 @@ describe("configService", () => {
   });
 
   test("reads seeded numeric config", () => {
-    expect(service.getNumber("max-retries")).toBe(0);
+    expect(service.getNumber("max-retries")).toBe(3);
     expect(service.getNumber("backoff-base")).toBe(2);
   });
 

@@ -61,6 +61,13 @@ describe("queueService", () => {
     expect(service.list({ state: "completed" })).toEqual([]);
   });
 
+  test("list rejects invalid state filter", () => {
+    expect(() => service.list({ state: "bogus" })).toThrow(QueueValidationError);
+    expect(() => service.list({ state: "bogus" })).toThrow(
+      "Invalid state 'bogus'. Allowed values: pending, processing, completed, failed, dead"
+    );
+  });
+
   test("status returns expected counters", () => {
     service.enqueue({ id: "job6", command: "echo a" });
     service.enqueue({ id: "job7", command: "echo b" });

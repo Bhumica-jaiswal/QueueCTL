@@ -1,3 +1,8 @@
 node_modules/
 coverage/
 queuectl.db
+
+
+# SQLite
+queuectl.db-wal
+queuectl.db-shm

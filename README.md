@@ -49,12 +49,22 @@ queuectl config set max-retries 3
 queuectl config set backoff-base 2
 ```
 
-Enqueue jobs:
+Enqueue jobs with strict JSON on Linux/macOS shells:
 
 ```bash
 queuectl enqueue '{"id":"job1","command":"echo hello"}'
 queuectl enqueue '{"id":"job2","command":"node -e \"process.exit(1)\"","max_retries":2}'
 ```
+
+Recommended Windows PowerShell syntax:
+
+```powershell
+npm run queuectl -- enqueue --id job1 --command "echo hello"
+npm run queuectl -- enqueue --id job2 --command "node -e ""process.exit(1)""" --max-retries 2
+```
+
+The flag syntax avoids JSON quote escaping issues in Windows shells while still
+creating the same job object internally.
 
 Inspect queue state:
 
