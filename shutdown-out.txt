@@ -1,2 +1,0 @@
-Worker 1 started
-Worker 1 picked job slow-job2
