@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QueueCTL Dashboard</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="page-header">
+        <div>
+          <h1>QueueCTL Dashboard</h1>
+          <p id="status-text">Loading queue status...</p>
+        </div>
+      </header>
+
+      <section class="metrics-grid" aria-label="Queue metrics">
+        <article class="metric"><span>Total Jobs</span><strong id="totalJobs">0</strong></article>
+        <article class="metric"><span>Pending</span><strong id="pending">0</strong></article>
+        <article class="metric"><span>Processing</span><strong id="processing">0</strong></article>
+        <article class="metric"><span>Completed</span><strong id="completed">0</strong></article>
+        <article class="metric"><span>Failed</span><strong id="failed">0</strong></article>
+        <article class="metric"><span>Dead</span><strong id="dead">0</strong></article>
+      </section>
+
+      <section class="summary">
+        <div><span>Success Rate</span><strong id="successRate">0%</strong></div>
+        <div><span>Average Attempts</span><strong id="averageAttempts">0</strong></div>
+      </section>
+
+      <section class="layout">
+        <section class="jobs-panel">
+          <h2>Jobs</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>State</th>
+                <th>Priority</th>
+                <th>Attempts</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body"></tbody>
+          </table>
+        </section>
+
+        <aside class="details-panel">
+          <h2>Job Details</h2>
+          <div id="job-details" class="details-empty">Select a job to inspect output and error.</div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

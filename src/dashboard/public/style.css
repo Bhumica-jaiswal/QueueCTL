@@ -1,0 +1,174 @@
+:root {
+  color-scheme: light;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f5f7fb;
+  color: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 30px;
+}
+
+h2 {
+  font-size: 18px;
+  margin-bottom: 14px;
+}
+
+#status-text {
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.metric,
+.summary,
+.jobs-panel,
+.details-panel {
+  background: #ffffff;
+  border: 1px solid #dce3ee;
+  border-radius: 8px;
+}
+
+.metric {
+  padding: 16px;
+}
+
+.metric span,
+.summary span,
+.field-label {
+  display: block;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 26px;
+}
+
+.summary {
+  display: flex;
+  gap: 40px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.summary strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  gap: 18px;
+}
+
+.jobs-panel,
+.details-panel {
+  padding: 18px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #e5eaf2;
+  font-size: 14px;
+}
+
+th {
+  color: #475569;
+  font-weight: 700;
+}
+
+tr.job-row {
+  cursor: pointer;
+}
+
+tr.job-row:hover {
+  background: #f8fafc;
+}
+
+.state {
+  display: inline-block;
+  min-width: 82px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  text-align: center;
+  font-size: 12px;
+}
+
+.details-empty,
+.error-text {
+  color: #64748b;
+}
+
+.detail-block {
+  margin-bottom: 16px;
+}
+
+pre {
+  min-height: 42px;
+  margin: 6px 0 0;
+  padding: 10px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .metrics-grid,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .summary {
+    flex-direction: column;
+    gap: 14px;
+  }
+}

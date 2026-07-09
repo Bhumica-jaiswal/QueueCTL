@@ -15,6 +15,7 @@ const {
 } = require("../services/queueService");
 const { createLogService } = require("../services/logService");
 const { createMetricsService } = require("../services/metricsService");
+const { startDashboardServer, DEFAULT_PORT } = require("../dashboard/server");
 const { WorkerManager } = require("../workers/workerManager");
 const {
   buildEnqueuePayload,
@@ -34,6 +35,37 @@ async function runWorkers(count, queueService) {
 
   manager.start();
   await manager.waitForShutdownSignal();
+}
+
+async function runDashboard(portOption) {
+  const port = Number(portOption);
+  if (!Number.isInteger(port) || port < 1) {
+    throw new Error("Dashboard port must be a positive integer");
+  }
+
+  const dashboard = startDashboardServer({ port });
+  console.log("QueueCTL Dashboard running at:");
+  console.log("");
+  console.log(`http://localhost:${port}`);
+
+  await new Promise((resolve) => {
+    let isStopping = false;
+
+    const shutdown = async () => {
+      if (isStopping) {
+        return;
+      }
+
+      isStopping = true;
+      process.removeListener("SIGINT", shutdown);
+      process.removeListener("SIGTERM", shutdown);
+      await dashboard.close();
+      resolve();
+    };
+
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+  });
 }
 
 function formatNullableLogValue(value) {
@@ -180,6 +212,19 @@ function createProgram({ queueService, configService, logService, metricsService
       }
     });
 
+  program
+    .command("dashboard")
+    .description("Start the read-only QueueCTL monitoring dashboard")
+    .option("--port <port>", "Dashboard port", String(DEFAULT_PORT))
+    .action(async (options) => {
+      try {
+        await runDashboard(options.port);
+      } catch (error) {
+        console.error(`Failed to start dashboard: ${error.message}`);
+        process.exitCode = 1;
+      }
+    });
+
   const dlqCommand = program.command("dlq").description("Manage dead letter jobs");
 
   dlqCommand
@@ -304,5 +349,6 @@ if (require.main === module) {
 module.exports = {
   createProgram,
   formatNullableLogValue,
+  runDashboard,
   runWorkers,
 };

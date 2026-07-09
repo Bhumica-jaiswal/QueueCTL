@@ -16,7 +16,8 @@
   "description": "",
   "dependencies": {
     "better-sqlite3": "^12.11.1",
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "jest": "^30.4.2"
