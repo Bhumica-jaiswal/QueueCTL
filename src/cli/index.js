@@ -74,6 +74,7 @@ function createProgram({ queueService, configService, logService, metricsService
     .option("--command <command>", "Shell command to run")
     .option("--max-retries <count>", "Maximum retry attempts")
     .option("--run-at <datetime>", "Earliest time the job can run")
+    .option("--priority <number>", "Job priority")
     .action((jobJsonParts, options) => {
       try {
         const parsed = buildEnqueuePayload(jobJsonParts, options);

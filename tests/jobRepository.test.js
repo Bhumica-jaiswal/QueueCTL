@@ -110,6 +110,51 @@ describe("jobRepository", () => {
     expect(secondClaim).toBeNull();
   });
 
+  test("claimNextJob returns higher priority job first", () => {
+    repo.createJob({
+      id: "job-low",
+      command: "echo low",
+      state: "pending",
+      priority: 1,
+    });
+    repo.createJob({
+      id: "job-high",
+      command: "echo high",
+      state: "pending",
+      priority: 10,
+    });
+
+    const claimed = repo.claimNextJob("worker-1");
+
+    expect(claimed.id).toBe("job-high");
+    expect(claimed.priority).toBe(10);
+  });
+
+  test("claimNextJob preserves FIFO for equal priority jobs", () => {
+    repo.createJob({
+      id: "job-old",
+      command: "echo old",
+      state: "pending",
+      priority: 5,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      next_run_at: "2026-01-01T00:00:00.000Z",
+    });
+    repo.createJob({
+      id: "job-new",
+      command: "echo new",
+      state: "pending",
+      priority: 5,
+      created_at: "2026-01-01T00:00:01.000Z",
+      updated_at: "2026-01-01T00:00:01.000Z",
+      next_run_at: "2026-01-01T00:00:00.000Z",
+    });
+
+    const claimed = repo.claimNextJob("worker-1");
+
+    expect(claimed.id).toBe("job-old");
+  });
+
   test("claimNextJob claims failed jobs only when retry time is reached", () => {
     repo.createJob({
       id: "job-future",
@@ -155,6 +200,28 @@ describe("jobRepository", () => {
 
     expect(claimed.id).toBe("job-past-pending");
     expect(claimed.state).toBe("processing");
+  });
+
+  test("claimNextJob skips future high priority job for available low priority job", () => {
+    repo.createJob({
+      id: "job-future-high",
+      command: "echo later",
+      state: "pending",
+      priority: 100,
+      next_run_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    repo.createJob({
+      id: "job-ready-low",
+      command: "echo now",
+      state: "pending",
+      priority: 0,
+      next_run_at: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    const claimed = repo.claimNextJob("worker-1");
+
+    expect(claimed.id).toBe("job-ready-low");
+    expect(claimed.priority).toBe(0);
   });
 
   test("markJobCompleted only completes processing jobs", () => {

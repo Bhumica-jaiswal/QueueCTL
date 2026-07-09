@@ -43,6 +43,18 @@ describe("CLI enqueue parsing", () => {
     });
   });
 
+  test("JSON enqueue supports priority", () => {
+    expect(
+      buildEnqueuePayload([
+        '{"id":"job1","command":"echo hello","priority":5}',
+      ])
+    ).toEqual({
+      id: "job1",
+      command: "echo hello",
+      priority: 5,
+    });
+  });
+
   test("JSON enqueue supports run_at", () => {
     expect(
       buildEnqueuePayload([
@@ -80,6 +92,14 @@ describe("CLI enqueue parsing", () => {
       id: "job1",
       command: "echo hello",
       run_at: "2026-07-10T10:00:00",
+    });
+  });
+
+  test("PowerShell-stripped JSON preserves priority", () => {
+    expect(buildEnqueuePayload(["{id:job1,command:echo hello,priority:5}"])).toEqual({
+      id: "job1",
+      command: "echo hello",
+      priority: 5,
     });
   });
 
@@ -123,6 +143,20 @@ describe("CLI enqueue parsing", () => {
       id: "job1",
       command: "echo hello",
       run_at: "2026-07-10T10:00:00",
+    });
+  });
+
+  test("flag based enqueue supports priority", () => {
+    expect(
+      buildEnqueuePayload([], {
+        id: "job1",
+        command: "echo hello",
+        priority: "10",
+      })
+    ).toEqual({
+      id: "job1",
+      command: "echo hello",
+      priority: 10,
     });
   });
 

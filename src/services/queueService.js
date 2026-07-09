@@ -40,6 +40,11 @@ function createQueueService({ jobRepository, configService }) {
       throw new QueueValidationError("max_retries must be a non-negative integer");
     }
 
+    const priority = jobPayload.priority ?? 0;
+    if (!Number.isInteger(priority) || priority < 0) {
+      throw new QueueValidationError("priority must be an integer");
+    }
+
     let nextRunAt = new Date().toISOString();
     if (jobPayload.run_at !== undefined) {
       const runAt = new Date(jobPayload.run_at);
@@ -67,6 +72,7 @@ function createQueueService({ jobRepository, configService }) {
       next_run_at: nextRunAt,
       output: null,
       error: null,
+      priority,
     });
   }
 

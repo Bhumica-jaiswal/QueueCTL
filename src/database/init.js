@@ -11,12 +11,17 @@ const CREATE_JOBS_TABLE_SQL = `
     updated_at DATETIME,
     next_run_at DATETIME,
     output TEXT,
-    error TEXT
+    error TEXT,
+    priority INTEGER DEFAULT 0
   )
 `;
 
 const ADD_JOBS_WORKER_ID_COLUMN_SQL = `
   ALTER TABLE jobs ADD COLUMN worker_id TEXT
+`;
+
+const ADD_JOBS_PRIORITY_COLUMN_SQL = `
+  ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0
 `;
 
 const CREATE_CONFIG_TABLE_SQL = `
@@ -46,6 +51,11 @@ function initDatabase(db = getConnection()) {
       const hasWorkerId = jobsColumns.some((column) => column.name === "worker_id");
       if (!hasWorkerId) {
         db.exec(ADD_JOBS_WORKER_ID_COLUMN_SQL);
+      }
+
+      const hasPriority = jobsColumns.some((column) => column.name === "priority");
+      if (!hasPriority) {
+        db.exec(ADD_JOBS_PRIORITY_COLUMN_SQL);
       }
 
       const setDefaultConfig = db.prepare(`

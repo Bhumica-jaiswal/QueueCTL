@@ -33,6 +33,39 @@ describe("queueService", () => {
     expect(created.attempts).toBe(0);
   });
 
+  test("enqueue without priority stores priority zero", () => {
+    const created = service.enqueue({ id: "job-priority-default", command: "echo hello" });
+
+    expect(created.priority).toBe(0);
+  });
+
+  test("enqueue with priority stores priority", () => {
+    const created = service.enqueue({
+      id: "job-priority",
+      command: "echo urgent",
+      priority: 10,
+    });
+
+    expect(created.priority).toBe(10);
+  });
+
+  test("enqueue rejects invalid priority", () => {
+    expect(() =>
+      service.enqueue({
+        id: "job-invalid-priority",
+        command: "echo nope",
+        priority: "abc",
+      })
+    ).toThrow(QueueValidationError);
+    expect(() =>
+      service.enqueue({
+        id: "job-invalid-priority",
+        command: "echo nope",
+        priority: "abc",
+      })
+    ).toThrow("priority must be an integer");
+  });
+
   test("enqueue normal job stores current next_run_at", () => {
     const before = Date.now();
     const created = service.enqueue({ id: "job-normal", command: "echo hello" });

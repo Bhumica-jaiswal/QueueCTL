@@ -11,7 +11,8 @@ function createJobRepository(db) {
       next_run_at,
       output,
       error,
-      worker_id
+      worker_id,
+      priority
     ) VALUES (
       @id,
       @command,
@@ -23,7 +24,8 @@ function createJobRepository(db) {
       @next_run_at,
       @output,
       @error,
-      @worker_id
+      @worker_id,
+      @priority
     )
   `);
 
@@ -38,7 +40,7 @@ function createJobRepository(db) {
     WHERE
       (state = 'pending' AND next_run_at <= ?)
       OR (state = 'failed' AND next_run_at <= ?)
-    ORDER BY created_at ASC
+    ORDER BY priority DESC, created_at ASC
     LIMIT 1
   `);
   const markClaimedStatement = db.prepare(
@@ -77,6 +79,7 @@ function createJobRepository(db) {
       output: job.output ?? null,
       error: job.error ?? null,
       worker_id: job.worker_id ?? null,
+      priority: job.priority ?? 0,
     };
 
     try {
