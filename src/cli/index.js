@@ -13,6 +13,7 @@ const {
   createQueueService,
   QueueValidationError,
 } = require("../services/queueService");
+const { createLogService } = require("../services/logService");
 const { WorkerManager } = require("../workers/workerManager");
 const {
   buildEnqueuePayload,
@@ -51,7 +52,11 @@ async function runWorkers(count, queueService) {
   });
 }
 
-function createProgram({ queueService, configService }) {
+function formatNullableLogValue(value) {
+  return value ?? "None";
+}
+
+function createProgram({ queueService, configService, logService }) {
   const program = new Command();
 
   program
@@ -134,6 +139,30 @@ function createProgram({ queueService, configService }) {
         console.log(`dead: ${status.dead}`);
       } catch (error) {
         console.error(`Failed to read queue status: ${error.message}`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command("logs")
+    .description("Show stored output and error for a job")
+    .argument("<jobId>", "Job id")
+    .action((jobId) => {
+      try {
+        const logs = logService.getJobLogs(jobId);
+
+        console.log(`Job: ${logs.id}`);
+        console.log("");
+        console.log(`State: ${logs.state}`);
+        console.log(`Attempts: ${logs.attempts}`);
+        console.log("");
+        console.log("Output:");
+        console.log(formatNullableLogValue(logs.output));
+        console.log("");
+        console.log("Error:");
+        console.log(formatNullableLogValue(logs.error));
+      } catch (error) {
+        console.error(error.message);
         process.exitCode = 1;
       }
     });
@@ -241,7 +270,8 @@ function main() {
   const configRepository = createConfigRepository(db);
   const configService = createConfigService({ configRepository });
   const queueService = createQueueService({ jobRepository, configService });
-  const program = createProgram({ queueService, configService });
+  const logService = createLogService({ jobRepository });
+  const program = createProgram({ queueService, configService, logService });
 
   return program.parseAsync(process.argv).finally(() => {
     closeConnection();
@@ -254,5 +284,6 @@ if (require.main === module) {
 
 module.exports = {
   createProgram,
+  formatNullableLogValue,
   runWorkers,
 };

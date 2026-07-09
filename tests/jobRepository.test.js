@@ -28,6 +28,10 @@ describe("jobRepository", () => {
     expect(found.state).toBe("pending");
   });
 
+  test("findById returns null for missing id", () => {
+    expect(repo.findById("missing-job")).toBeNull();
+  });
+
   test("findByState", () => {
     repo.createJob({ id: "job-1", command: "echo one", state: "pending" });
     repo.createJob({ id: "job-2", command: "echo two", state: "running" });
