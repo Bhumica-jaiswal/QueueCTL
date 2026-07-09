@@ -12,7 +12,8 @@ const CREATE_JOBS_TABLE_SQL = `
     next_run_at DATETIME,
     output TEXT,
     error TEXT,
-    priority INTEGER DEFAULT 0
+    priority INTEGER DEFAULT 0,
+    timeout INTEGER DEFAULT NULL
   )
 `;
 
@@ -22,6 +23,10 @@ const ADD_JOBS_WORKER_ID_COLUMN_SQL = `
 
 const ADD_JOBS_PRIORITY_COLUMN_SQL = `
   ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0
+`;
+
+const ADD_JOBS_TIMEOUT_COLUMN_SQL = `
+  ALTER TABLE jobs ADD COLUMN timeout INTEGER DEFAULT NULL
 `;
 
 const CREATE_CONFIG_TABLE_SQL = `
@@ -56,6 +61,11 @@ function initDatabase(db = getConnection()) {
       const hasPriority = jobsColumns.some((column) => column.name === "priority");
       if (!hasPriority) {
         db.exec(ADD_JOBS_PRIORITY_COLUMN_SQL);
+      }
+
+      const hasTimeout = jobsColumns.some((column) => column.name === "timeout");
+      if (!hasTimeout) {
+        db.exec(ADD_JOBS_TIMEOUT_COLUMN_SQL);
       }
 
       const setDefaultConfig = db.prepare(`

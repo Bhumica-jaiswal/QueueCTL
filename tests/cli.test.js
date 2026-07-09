@@ -55,6 +55,18 @@ describe("CLI enqueue parsing", () => {
     });
   });
 
+  test("JSON enqueue supports timeout", () => {
+    expect(
+      buildEnqueuePayload([
+        '{"id":"slow","command":"sleep 20","timeout":3}',
+      ])
+    ).toEqual({
+      id: "slow",
+      command: "sleep 20",
+      timeout: 3,
+    });
+  });
+
   test("JSON enqueue supports run_at", () => {
     expect(
       buildEnqueuePayload([
@@ -100,6 +112,14 @@ describe("CLI enqueue parsing", () => {
       id: "job1",
       command: "echo hello",
       priority: 5,
+    });
+  });
+
+  test("PowerShell-stripped JSON preserves timeout", () => {
+    expect(buildEnqueuePayload(["{id:slow,command:sleep 20,timeout:3}"])).toEqual({
+      id: "slow",
+      command: "sleep 20",
+      timeout: 3,
     });
   });
 
@@ -157,6 +177,20 @@ describe("CLI enqueue parsing", () => {
       id: "job1",
       command: "echo hello",
       priority: 10,
+    });
+  });
+
+  test("flag based enqueue supports timeout", () => {
+    expect(
+      buildEnqueuePayload([], {
+        id: "slow",
+        command: "sleep 20",
+        timeout: "3",
+      })
+    ).toEqual({
+      id: "slow",
+      command: "sleep 20",
+      timeout: 3,
     });
   });
 

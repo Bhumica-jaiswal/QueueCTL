@@ -155,7 +155,7 @@ function repairPowerShellPayload(payload) {
     if (!key) continue;
 
 
-    if (key === "max_retries" || key === "priority") {
+    if (key === "max_retries" || key === "priority" || key === "timeout") {
 
       result[key] = Number(value);
 
@@ -214,6 +214,12 @@ function buildEnqueuePayload(args = [], options = {}) {
 
     }
 
+    if (options.timeout !== undefined) {
+
+      payload.timeout = Number(options.timeout);
+
+    }
+
 
     return payload;
 
@@ -237,4 +243,3 @@ module.exports = {
   buildEnqueuePayload,
   PayloadValidationError,
 };
-

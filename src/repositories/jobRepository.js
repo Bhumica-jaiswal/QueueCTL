@@ -12,7 +12,8 @@ function createJobRepository(db) {
       output,
       error,
       worker_id,
-      priority
+      priority,
+      timeout
     ) VALUES (
       @id,
       @command,
@@ -25,7 +26,8 @@ function createJobRepository(db) {
       @output,
       @error,
       @worker_id,
-      @priority
+      @priority,
+      @timeout
     )
   `);
 
@@ -80,6 +82,7 @@ function createJobRepository(db) {
       error: job.error ?? null,
       worker_id: job.worker_id ?? null,
       priority: job.priority ?? 0,
+      timeout: job.timeout ?? null,
     };
 
     try {

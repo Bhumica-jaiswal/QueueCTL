@@ -45,6 +45,11 @@ function createQueueService({ jobRepository, configService }) {
       throw new QueueValidationError("priority must be an integer");
     }
 
+    const timeout = jobPayload.timeout ?? null;
+    if (timeout !== null && (!Number.isInteger(timeout) || timeout <= 0)) {
+      throw new QueueValidationError("timeout must be a positive integer");
+    }
+
     let nextRunAt = new Date().toISOString();
     if (jobPayload.run_at !== undefined) {
       const runAt = new Date(jobPayload.run_at);
@@ -73,6 +78,7 @@ function createQueueService({ jobRepository, configService }) {
       output: null,
       error: null,
       priority,
+      timeout,
     });
   }
 

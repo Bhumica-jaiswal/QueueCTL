@@ -49,6 +49,39 @@ describe("queueService", () => {
     expect(created.priority).toBe(10);
   });
 
+  test("enqueue without timeout stores null timeout", () => {
+    const created = service.enqueue({ id: "job-timeout-default", command: "echo hello" });
+
+    expect(created.timeout).toBeNull();
+  });
+
+  test("enqueue with timeout stores timeout", () => {
+    const created = service.enqueue({
+      id: "job-timeout",
+      command: "sleep 20",
+      timeout: 5,
+    });
+
+    expect(created.timeout).toBe(5);
+  });
+
+  test("enqueue rejects invalid timeout", () => {
+    expect(() =>
+      service.enqueue({
+        id: "job-invalid-timeout",
+        command: "sleep 20",
+        timeout: -1,
+      })
+    ).toThrow(QueueValidationError);
+    expect(() =>
+      service.enqueue({
+        id: "job-invalid-timeout",
+        command: "sleep 20",
+        timeout: -1,
+      })
+    ).toThrow("timeout must be a positive integer");
+  });
+
   test("enqueue rejects invalid priority", () => {
     expect(() =>
       service.enqueue({

@@ -92,6 +92,71 @@ describe("worker processing", () => {
     expect(updated.error).toBe("failure");
   });
 
+  test("worker passes timeout to executor", async () => {
+    repo.createJob({
+      id: "job-timeout-pass",
+      command: "sleep 20",
+      state: "pending",
+      timeout: 5,
+    });
+
+    const executor = {
+      execute: jest.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+      }),
+    };
+
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      pollIntervalMs: 20,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor,
+    });
+
+    manager.start();
+    await sleep(80);
+    await manager.stop();
+
+    expect(executor.execute).toHaveBeenCalledWith("sleep 20", 5);
+  });
+
+  test("timeout failure uses existing retry and dead letter handling", async () => {
+    service.enqueue({
+      id: "job-timeout-retry",
+      command: "sleep 20",
+      max_retries: 1,
+      timeout: 1,
+    });
+
+    const executor = {
+      execute: jest.fn().mockResolvedValue({
+        exitCode: 1,
+        stdout: "",
+        stderr: "Job timed out after 1 seconds",
+      }),
+    };
+
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      pollIntervalMs: 20,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor,
+    });
+
+    manager.start();
+    await sleep(80);
+    await manager.stop();
+
+    const updated = repo.findById("job-timeout-retry");
+    expect(updated.state).toBe("dead");
+    expect(updated.attempts).toBe(1);
+    expect(updated.error).toBe("Job timed out after 1 seconds");
+  });
+
   test("multiple workers do not duplicate execution", async () => {
     repo.createJob({ id: "job-c", command: "echo one", state: "pending" });
 

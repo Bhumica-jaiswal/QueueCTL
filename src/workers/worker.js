@@ -48,7 +48,10 @@ class Worker {
         }
 
         this.logger.log(`Worker ${this.id} picked job ${claimedJob.id}`);
-        const result = await this.executor.execute(claimedJob.command);
+        const result = await this.executor.execute(
+          claimedJob.command,
+          claimedJob.timeout
+        );
 
         if (result.exitCode === 0) {
           this.queueService.completeJob(claimedJob.id, result.stdout);
