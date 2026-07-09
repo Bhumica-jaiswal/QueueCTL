@@ -33,24 +33,7 @@ async function runWorkers(count, queueService) {
   });
 
   manager.start();
-
-  await new Promise((resolve) => {
-    let isStopping = false;
-
-    const shutdown = async () => {
-      if (isStopping) {
-        return;
-      }
-
-      isStopping = true;
-      console.log("Stopping workers...");
-      await manager.stop();
-      resolve();
-    };
-
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-  });
+  await manager.waitForShutdownSignal();
 }
 
 function formatNullableLogValue(value) {

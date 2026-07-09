@@ -16,6 +16,8 @@ class WorkerManager {
     this.executor = executor;
     this.workers = [];
     this.workerPromises = [];
+    this.isStopping = false;
+    this.stopPromise = null;
   }
 
   start() {
@@ -38,13 +40,50 @@ class WorkerManager {
   }
 
   async stop() {
-    await Promise.all(this.workers.map((worker) => worker.stop()));
-    this.workers = [];
-    this.workerPromises = [];
+    if (this.stopPromise) {
+      return this.stopPromise;
+    }
+
+    this.isStopping = true;
+    this.stopPromise = Promise.all(this.workers.map((worker) => worker.stop())).then(
+      () => {
+        this.workers = [];
+        this.workerPromises = [];
+        this.isStopping = false;
+        this.stopPromise = null;
+      }
+    );
+
+    return this.stopPromise;
+  }
+
+  async shutdown() {
+    if (this.stopPromise) {
+      return this.stopPromise;
+    }
+
+    this.logger.log("Shutdown requested...");
+    this.logger.log("Waiting for active jobs to finish...");
+    await this.stop();
+    this.logger.log("All workers stopped gracefully.");
   }
 
   async waitForShutdown() {
     await Promise.all(this.workerPromises);
+  }
+
+  waitForShutdownSignal(processObject = process) {
+    return new Promise((resolve) => {
+      const shutdown = async () => {
+        processObject.removeListener("SIGINT", shutdown);
+        processObject.removeListener("SIGTERM", shutdown);
+        await this.shutdown();
+        resolve();
+      };
+
+      processObject.once("SIGINT", shutdown);
+      processObject.once("SIGTERM", shutdown);
+    });
   }
 }
 

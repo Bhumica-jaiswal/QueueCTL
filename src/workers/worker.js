@@ -1,9 +1,3 @@
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 class Worker {
   constructor({ id, queueService, executor, pollIntervalMs = 1000, logger = console }) {
     this.id = id;
@@ -14,6 +8,7 @@ class Worker {
     this.isRunning = false;
     this.isStopping = false;
     this.runPromise = null;
+    this.stopIdleWait = null;
   }
 
   start() {
@@ -31,9 +26,28 @@ class Worker {
   async stop() {
     this.isStopping = true;
     this.isRunning = false;
+    if (this.stopIdleWait) {
+      this.stopIdleWait();
+      this.stopIdleWait = null;
+    }
+
     if (this.runPromise) {
       await this.runPromise;
     }
+  }
+
+  waitForNextPoll() {
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        this.stopIdleWait = null;
+        resolve();
+      }, this.pollIntervalMs);
+
+      this.stopIdleWait = () => {
+        clearTimeout(timeoutId);
+        resolve();
+      };
+    });
   }
 
   async runLoop() {
@@ -43,7 +57,7 @@ class Worker {
       try {
         claimedJob = this.queueService.claimNextJob(this.id);
         if (!claimedJob) {
-          await sleep(this.pollIntervalMs);
+          await this.waitForNextPoll();
           continue;
         }
 

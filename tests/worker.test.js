@@ -12,6 +12,18 @@ function sleep(ms) {
   });
 }
 
+function createDeferred() {
+  let resolve;
+  const promise = new Promise((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return {
+    promise,
+    resolve,
+  };
+}
+
 describe("worker processing", () => {
   let db;
   let repo;
@@ -90,6 +102,72 @@ describe("worker processing", () => {
     const updated = repo.findById("job-b");
     expect(updated.state).toBe("failed");
     expect(updated.error).toBe("failure");
+  });
+
+  test("shutdown prevents worker from claiming new jobs", async () => {
+    repo.createJob({ id: "job-running", command: "run first", state: "pending" });
+    repo.createJob({ id: "job-waiting", command: "run second", state: "pending" });
+    const execution = createDeferred();
+    const executor = {
+      execute: jest.fn().mockReturnValue(execution.promise),
+    };
+
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      pollIntervalMs: 20,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor,
+    });
+
+    manager.start();
+    while (executor.execute.mock.calls.length === 0) {
+      await sleep(5);
+    }
+
+    const stopPromise = manager.stop();
+    execution.resolve({ exitCode: 0, stdout: "done", stderr: "" });
+    await stopPromise;
+
+    expect(repo.findById("job-running").state).toBe("completed");
+    expect(repo.findById("job-waiting").state).toBe("pending");
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+  });
+
+  test("shutdown waits for running job to complete", async () => {
+    repo.createJob({ id: "job-long", command: "run long", state: "pending" });
+    const execution = createDeferred();
+    const executor = {
+      execute: jest.fn().mockReturnValue(execution.promise),
+    };
+
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      pollIntervalMs: 20,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor,
+    });
+
+    manager.start();
+    while (executor.execute.mock.calls.length === 0) {
+      await sleep(5);
+    }
+
+    let stopped = false;
+    const stopPromise = manager.stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+
+    expect(stopped).toBe(false);
+    expect(repo.findById("job-long").state).toBe("processing");
+
+    execution.resolve({ exitCode: 0, stdout: "done", stderr: "" });
+    await stopPromise;
+
+    expect(stopped).toBe(true);
+    expect(repo.findById("job-long").state).toBe("completed");
   });
 
   test("worker passes timeout to executor", async () => {
