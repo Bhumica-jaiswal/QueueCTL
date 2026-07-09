@@ -131,6 +131,32 @@ describe("jobRepository", () => {
     expect(repo.findById("job-future").state).toBe("failed");
   });
 
+  test("claimNextJob skips future scheduled pending jobs", () => {
+    repo.createJob({
+      id: "job-future-pending",
+      command: "echo later",
+      state: "pending",
+      next_run_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    expect(repo.claimNextJob("worker-1")).toBeNull();
+    expect(repo.findById("job-future-pending").state).toBe("pending");
+  });
+
+  test("claimNextJob claims past scheduled pending jobs", () => {
+    repo.createJob({
+      id: "job-past-pending",
+      command: "echo now",
+      state: "pending",
+      next_run_at: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    const claimed = repo.claimNextJob("worker-1");
+
+    expect(claimed.id).toBe("job-past-pending");
+    expect(claimed.state).toBe("processing");
+  });
+
   test("markJobCompleted only completes processing jobs", () => {
     repo.createJob({ id: "job-5", command: "echo done", state: "processing" });
 

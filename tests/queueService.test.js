@@ -33,6 +33,45 @@ describe("queueService", () => {
     expect(created.attempts).toBe(0);
   });
 
+  test("enqueue normal job stores current next_run_at", () => {
+    const before = Date.now();
+    const created = service.enqueue({ id: "job-normal", command: "echo hello" });
+    const after = Date.now();
+    const nextRunAt = Date.parse(created.next_run_at);
+
+    expect(nextRunAt).toBeGreaterThanOrEqual(before);
+    expect(nextRunAt).toBeLessThanOrEqual(after);
+  });
+
+  test("enqueue with future run_at stores next_run_at", () => {
+    const runAt = "2026-07-10T10:00:00";
+    const created = service.enqueue({
+      id: "job-future",
+      command: "echo later",
+      run_at: runAt,
+    });
+
+    expect(created.state).toBe("pending");
+    expect(created.next_run_at).toBe(new Date(runAt).toISOString());
+  });
+
+  test("enqueue rejects invalid run_at", () => {
+    expect(() =>
+      service.enqueue({
+        id: "job-invalid-run-at",
+        command: "echo nope",
+        run_at: "abc",
+      })
+    ).toThrow(QueueValidationError);
+    expect(() =>
+      service.enqueue({
+        id: "job-invalid-run-at",
+        command: "echo nope",
+        run_at: "abc",
+      })
+    ).toThrow("Invalid run_at timestamp");
+  });
+
   test("enqueue validates missing command", () => {
     expect(() => service.enqueue({ id: "job2" })).toThrow(QueueValidationError);
     expect(() => service.enqueue({ id: "job2" })).toThrow(

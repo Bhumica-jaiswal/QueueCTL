@@ -202,6 +202,12 @@ function buildEnqueuePayload(args = [], options = {}) {
 
     }
 
+    if (options.runAt !== undefined) {
+
+      payload.run_at = options.runAt;
+
+    }
+
 
     return payload;
 
@@ -225,6 +231,5 @@ module.exports = {
   buildEnqueuePayload,
   PayloadValidationError,
 };
-
 
 

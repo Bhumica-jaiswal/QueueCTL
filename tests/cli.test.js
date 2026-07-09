@@ -43,6 +43,18 @@ describe("CLI enqueue parsing", () => {
     });
   });
 
+  test("JSON enqueue supports run_at", () => {
+    expect(
+      buildEnqueuePayload([
+        '{"id":"job1","command":"echo hello","run_at":"2026-07-10T10:00:00"}',
+      ])
+    ).toEqual({
+      id: "job1",
+      command: "echo hello",
+      run_at: "2026-07-10T10:00:00",
+    });
+  });
+
   test("JSON enqueue preserves spaces when payload arrives in parts", () => {
     expect(
       buildEnqueuePayload(['{"id":"job1","command":"echo', 'hello"}'])
@@ -56,6 +68,18 @@ describe("CLI enqueue parsing", () => {
     expect(buildEnqueuePayload(["{id:job1,command:echo hello}"])).toEqual({
       id: "job1",
       command: "echo hello",
+    });
+  });
+
+  test("PowerShell-stripped JSON preserves run_at", () => {
+    expect(
+      buildEnqueuePayload([
+        "{id:job1,command:echo hello,run_at:2026-07-10T10:00:00}",
+      ])
+    ).toEqual({
+      id: "job1",
+      command: "echo hello",
+      run_at: "2026-07-10T10:00:00",
     });
   });
 
@@ -85,6 +109,20 @@ describe("CLI enqueue parsing", () => {
       id: "job1",
       command: "echo hello",
       max_retries: 2,
+    });
+  });
+
+  test("flag based enqueue supports run_at", () => {
+    expect(
+      buildEnqueuePayload([], {
+        id: "job1",
+        command: "echo hello",
+        runAt: "2026-07-10T10:00:00",
+      })
+    ).toEqual({
+      id: "job1",
+      command: "echo hello",
+      run_at: "2026-07-10T10:00:00",
     });
   });
 

@@ -40,6 +40,16 @@ function createQueueService({ jobRepository, configService }) {
       throw new QueueValidationError("max_retries must be a non-negative integer");
     }
 
+    let nextRunAt = new Date().toISOString();
+    if (jobPayload.run_at !== undefined) {
+      const runAt = new Date(jobPayload.run_at);
+      if (Number.isNaN(runAt.getTime())) {
+        throw new QueueValidationError("Invalid run_at timestamp");
+      }
+
+      nextRunAt = runAt.toISOString();
+    }
+
     const existing = jobRepository.findById(id);
     if (existing) {
       throw new QueueValidationError(`Job with id '${id}' already exists`);
@@ -54,7 +64,7 @@ function createQueueService({ jobRepository, configService }) {
         typeof jobPayload.max_retries === "number"
           ? jobPayload.max_retries
           : configService.getNumber("max-retries"),
-      next_run_at: new Date().toISOString(),
+      next_run_at: nextRunAt,
       output: null,
       error: null,
     });

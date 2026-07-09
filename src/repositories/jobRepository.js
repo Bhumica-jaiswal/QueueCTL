@@ -36,7 +36,7 @@ function createJobRepository(db) {
     SELECT *
     FROM jobs
     WHERE
-      state = 'pending'
+      (state = 'pending' AND next_run_at <= ?)
       OR (state = 'failed' AND next_run_at <= ?)
     ORDER BY created_at ASC
     LIMIT 1
@@ -120,7 +120,7 @@ function createJobRepository(db) {
   }
 
   const claimNextJobTransaction = db.transaction((workerId, now) => {
-    const next = findNextClaimableStatement.get(now);
+    const next = findNextClaimableStatement.get(now, now);
     if (!next) {
       return null;
     }
