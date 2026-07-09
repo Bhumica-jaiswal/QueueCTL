@@ -14,6 +14,7 @@ const {
   QueueValidationError,
 } = require("../services/queueService");
 const { createLogService } = require("../services/logService");
+const { createMetricsService } = require("../services/metricsService");
 const { WorkerManager } = require("../workers/workerManager");
 const {
   buildEnqueuePayload,
@@ -56,7 +57,7 @@ function formatNullableLogValue(value) {
   return value ?? "None";
 }
 
-function createProgram({ queueService, configService, logService }) {
+function createProgram({ queueService, configService, logService, metricsService }) {
   const program = new Command();
 
   program
@@ -167,6 +168,32 @@ function createProgram({ queueService, configService, logService }) {
       }
     });
 
+  program
+    .command("metrics")
+    .description("Show queue health and execution statistics")
+    .action(() => {
+      try {
+        const metrics = metricsService.getMetrics();
+
+        console.log("QueueCTL Metrics");
+        console.log("");
+        console.log(`Total Jobs: ${metrics.totalJobs}`);
+        console.log("");
+        console.log(`Pending: ${metrics.states.pending}`);
+        console.log(`Processing: ${metrics.states.processing}`);
+        console.log(`Completed: ${metrics.states.completed}`);
+        console.log(`Failed: ${metrics.states.failed}`);
+        console.log(`Dead: ${metrics.states.dead}`);
+        console.log("");
+        console.log(`Success Rate: ${metrics.successRate}%`);
+        console.log("");
+        console.log(`Average Attempts: ${metrics.averageAttempts}`);
+      } catch (error) {
+        console.error(`Failed to read queue metrics: ${error.message}`);
+        process.exitCode = 1;
+      }
+    });
+
   const dlqCommand = program.command("dlq").description("Manage dead letter jobs");
 
   dlqCommand
@@ -271,7 +298,13 @@ function main() {
   const configService = createConfigService({ configRepository });
   const queueService = createQueueService({ jobRepository, configService });
   const logService = createLogService({ jobRepository });
-  const program = createProgram({ queueService, configService, logService });
+  const metricsService = createMetricsService({ jobRepository });
+  const program = createProgram({
+    queueService,
+    configService,
+    logService,
+    metricsService,
+  });
 
   return program.parseAsync(process.argv).finally(() => {
     closeConnection();

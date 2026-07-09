@@ -59,6 +59,9 @@ function createJobRepository(db) {
   const getJobCountsStatement = db.prepare(
     "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state"
   );
+  const getAttemptStatsStatement = db.prepare(
+    "SELECT AVG(attempts) AS averageAttempts FROM jobs"
+  );
 
   function createJob(job) {
     const now = new Date().toISOString();
@@ -233,6 +236,20 @@ function createJobRepository(db) {
     }
   }
 
+  function getAttemptStats() {
+    try {
+      const row = getAttemptStatsStatement.get();
+
+      return {
+        averageAttempts: row.averageAttempts ?? 0,
+      };
+    } catch (error) {
+      throw new Error(`Failed to get attempt stats: ${error.message}`, {
+        cause: error,
+      });
+    }
+  }
+
   return {
     createJob,
     findById,
@@ -243,6 +260,7 @@ function createJobRepository(db) {
     recordJobFailure,
     retryDeadJob,
     getJobCounts,
+    getAttemptStats,
   };
 }
 

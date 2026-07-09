@@ -53,6 +53,50 @@ describe("jobRepository", () => {
     expect(counts.byState.failed).toBe(1);
   });
 
+  test("getJobCounts returns grouped state counts", () => {
+    repo.createJob({ id: "job-pending", command: "echo pending", state: "pending" });
+    repo.createJob({
+      id: "job-completed",
+      command: "echo completed",
+      state: "completed",
+    });
+    repo.createJob({ id: "job-dead", command: "echo dead", state: "dead" });
+
+    const counts = repo.getJobCounts();
+
+    expect(counts).toEqual({
+      total: 3,
+      byState: {
+        pending: 1,
+        completed: 1,
+        dead: 1,
+      },
+    });
+  });
+
+  test("getAttemptStats calculates average attempts", () => {
+    repo.createJob({
+      id: "job-attempts-1",
+      command: "echo one",
+      attempts: 1,
+    });
+    repo.createJob({
+      id: "job-attempts-2",
+      command: "echo two",
+      attempts: 2,
+    });
+
+    expect(repo.getAttemptStats()).toEqual({
+      averageAttempts: 1.5,
+    });
+  });
+
+  test("getAttemptStats returns zero for empty queue", () => {
+    expect(repo.getAttemptStats()).toEqual({
+      averageAttempts: 0,
+    });
+  });
+
   test("claimNextJob claims once, marks processing, and records worker", () => {
     repo.createJob({ id: "job-4", command: "echo claim", state: "pending" });
 
