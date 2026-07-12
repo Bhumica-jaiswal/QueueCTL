@@ -12,6 +12,7 @@ const CREATE_JOBS_TABLE_SQL = `
     next_run_at DATETIME,
     output TEXT,
     error TEXT,
+    processing_started_at DATETIME,
     priority INTEGER DEFAULT 0,
     timeout INTEGER DEFAULT NULL
   )
@@ -19,6 +20,10 @@ const CREATE_JOBS_TABLE_SQL = `
 
 const ADD_JOBS_WORKER_ID_COLUMN_SQL = `
   ALTER TABLE jobs ADD COLUMN worker_id TEXT
+`;
+
+const ADD_JOBS_PROCESSING_STARTED_AT_COLUMN_SQL = `
+  ALTER TABLE jobs ADD COLUMN processing_started_at DATETIME
 `;
 
 const ADD_JOBS_PRIORITY_COLUMN_SQL = `
@@ -56,6 +61,18 @@ function initDatabase(db = getConnection()) {
       const hasWorkerId = jobsColumns.some((column) => column.name === "worker_id");
       if (!hasWorkerId) {
         db.exec(ADD_JOBS_WORKER_ID_COLUMN_SQL);
+      }
+
+      const hasProcessingStartedAt = jobsColumns.some(
+        (column) => column.name === "processing_started_at"
+      );
+      if (!hasProcessingStartedAt) {
+        db.exec(ADD_JOBS_PROCESSING_STARTED_AT_COLUMN_SQL);
+        db.prepare(`
+          UPDATE jobs
+          SET processing_started_at = updated_at
+          WHERE state = 'processing' AND processing_started_at IS NULL
+        `).run();
       }
 
       const hasPriority = jobsColumns.some((column) => column.name === "priority");

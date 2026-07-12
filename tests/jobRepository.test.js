@@ -105,6 +105,7 @@ describe("jobRepository", () => {
     expect(firstClaim.id).toBe("job-4");
     expect(firstClaim.state).toBe("processing");
     expect(firstClaim.worker_id).toBe("worker-1");
+    expect(firstClaim.processing_started_at).toBeTruthy();
 
     const secondClaim = repo.claimNextJob("worker-2");
     expect(secondClaim).toBeNull();
@@ -225,14 +226,78 @@ describe("jobRepository", () => {
   });
 
   test("markJobCompleted only completes processing jobs", () => {
-    repo.createJob({ id: "job-5", command: "echo done", state: "processing" });
+    repo.createJob({
+      id: "job-5",
+      command: "echo done",
+      state: "processing",
+      worker_id: "worker-1",
+      processing_started_at: new Date().toISOString(),
+    });
 
     const completed = repo.markJobCompleted("job-5", "ok");
     expect(completed.state).toBe("completed");
     expect(completed.output).toBe("ok");
+    expect(completed.worker_id).toBeNull();
+    expect(completed.processing_started_at).toBeNull();
 
     repo.createJob({ id: "job-6", command: "echo pending", state: "pending" });
     expect(repo.markJobCompleted("job-6", "nope")).toBeNull();
     expect(repo.findById("job-6").state).toBe("pending");
+  });
+
+  test("recoverStaleJobs returns stale processing jobs to pending without resetting attempts", () => {
+    repo.createJob({
+      id: "job-stale",
+      command: "echo stale",
+      state: "processing",
+      attempts: 2,
+      worker_id: "stopped-worker",
+      processing_started_at: new Date(Date.now() - 31_000).toISOString(),
+      next_run_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    expect(repo.recoverStaleJobs()).toBe(1);
+
+    expect(repo.findById("job-stale")).toMatchObject({
+      state: "pending",
+      attempts: 2,
+      worker_id: null,
+      processing_started_at: null,
+    });
+  });
+
+  test("recoverStaleJobs does not recover completed jobs", () => {
+    repo.createJob({
+      id: "job-completed-lease",
+      command: "echo done",
+      state: "completed",
+      processing_started_at: new Date(Date.now() - 31_000).toISOString(),
+    });
+
+    expect(repo.recoverStaleJobs()).toBe(0);
+    expect(repo.findById("job-completed-lease").state).toBe("completed");
+  });
+
+  test("claimNextJob recovers stale jobs before claiming the next runnable job", () => {
+    repo.createJob({
+      id: "job-stale-claim",
+      command: "echo stale",
+      state: "processing",
+      attempts: 1,
+      worker_id: "stopped-worker",
+      processing_started_at: new Date(Date.now() - 31_000).toISOString(),
+      next_run_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    repo.createJob({ id: "job-ready", command: "echo ready", state: "pending" });
+
+    const claimed = repo.claimNextJob("worker-1");
+
+    expect(claimed.id).toBe("job-ready");
+    expect(repo.findById("job-stale-claim")).toMatchObject({
+      state: "pending",
+      attempts: 1,
+      worker_id: null,
+      processing_started_at: null,
+    });
   });
 });

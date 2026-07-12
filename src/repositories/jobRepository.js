@@ -1,4 +1,6 @@
-function createJobRepository(db) {
+const PROCESSING_LEASE_MS = 30_000;
+
+function createJobRepository(db, { processingLeaseMs = PROCESSING_LEASE_MS } = {}) {
   const insertJobStatement = db.prepare(`
     INSERT INTO jobs (
       id,
@@ -12,6 +14,7 @@ function createJobRepository(db) {
       output,
       error,
       worker_id,
+      processing_started_at,
       priority,
       timeout
     ) VALUES (
@@ -26,6 +29,7 @@ function createJobRepository(db) {
       @output,
       @error,
       @worker_id,
+      @processing_started_at,
       @priority,
       @timeout
     )
@@ -46,20 +50,25 @@ function createJobRepository(db) {
     LIMIT 1
   `);
   const markClaimedStatement = db.prepare(
-    "UPDATE jobs SET state = 'processing', worker_id = ?, updated_at = ? WHERE id = ? AND state IN ('pending', 'failed')"
+    "UPDATE jobs SET state = 'processing', worker_id = ?, processing_started_at = ?, updated_at = ? WHERE id = ? AND state IN ('pending', 'failed')"
   );
   const recordFailureStatement = db.prepare(
-    "UPDATE jobs SET state = 'failed', attempts = ?, error = ?, next_run_at = ?, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
+    "UPDATE jobs SET state = 'failed', attempts = ?, error = ?, next_run_at = ?, worker_id = NULL, processing_started_at = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
   );
   const markDeadStatement = db.prepare(
-    "UPDATE jobs SET state = 'dead', attempts = ?, error = ?, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
+    "UPDATE jobs SET state = 'dead', attempts = ?, error = ?, worker_id = NULL, processing_started_at = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
   );
   const markCompletedStatement = db.prepare(
-    "UPDATE jobs SET state = 'completed', output = ?, error = NULL, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
+    "UPDATE jobs SET state = 'completed', output = ?, error = NULL, worker_id = NULL, processing_started_at = NULL, updated_at = ? WHERE id = ? AND state = 'processing'"
   );
   const retryDeadStatement = db.prepare(
-    "UPDATE jobs SET state = 'pending', attempts = 0, error = NULL, next_run_at = ?, worker_id = NULL, updated_at = ? WHERE id = ? AND state = 'dead'"
+    "UPDATE jobs SET state = 'pending', attempts = 0, error = NULL, next_run_at = ?, worker_id = NULL, processing_started_at = NULL, updated_at = ? WHERE id = ? AND state = 'dead'"
   );
+  const recoverStaleJobsStatement = db.prepare(`
+    UPDATE jobs
+    SET state = 'pending', worker_id = NULL, processing_started_at = NULL, updated_at = ?
+    WHERE state = 'processing' AND processing_started_at < ?
+  `);
   const getJobCountsStatement = db.prepare(
     "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state"
   );
@@ -81,6 +90,7 @@ function createJobRepository(db) {
       output: job.output ?? null,
       error: job.error ?? null,
       worker_id: job.worker_id ?? null,
+      processing_started_at: job.processing_started_at ?? null,
       priority: job.priority ?? 0,
       timeout: job.timeout ?? null,
     };
@@ -125,13 +135,24 @@ function createJobRepository(db) {
     }
   }
 
+  function recoverStaleJobs(now = new Date().toISOString()) {
+    const leaseExpiresAt = new Date(
+      Date.parse(now) - processingLeaseMs
+    ).toISOString();
+    const result = recoverStaleJobsStatement.run(now, leaseExpiresAt);
+
+    return result.changes;
+  }
+
   const claimNextJobTransaction = db.transaction((workerId, now) => {
+    recoverStaleJobs(now);
+
     const next = findNextClaimableStatement.get(now, now);
     if (!next) {
       return null;
     }
 
-    const result = markClaimedStatement.run(String(workerId), now, next.id);
+    const result = markClaimedStatement.run(String(workerId), now, now, next.id);
     if (result.changes === 0) {
       return null;
     }
@@ -262,6 +283,7 @@ function createJobRepository(db) {
     findAll,
     findByState,
     claimNextJob,
+    recoverStaleJobs,
     markJobCompleted,
     recordJobFailure,
     retryDeadJob,
@@ -272,4 +294,5 @@ function createJobRepository(db) {
 
 module.exports = {
   createJobRepository,
+  PROCESSING_LEASE_MS,
 };

@@ -54,3 +54,37 @@ describe("persistence", () => {
     second.db.close();
   });
 });
+
+test("initDatabase safely adds processing leases to existing job tables", () => {
+  const legacyDb = createConnection({ databasePath: ":memory:" });
+  legacyDb.exec(`
+    CREATE TABLE jobs (
+      id TEXT PRIMARY KEY,
+      command TEXT NOT NULL,
+      state TEXT,
+      attempts INTEGER,
+      max_retries INTEGER,
+      created_at DATETIME,
+      updated_at DATETIME,
+      next_run_at DATETIME,
+      output TEXT,
+      error TEXT,
+      worker_id TEXT,
+      priority INTEGER DEFAULT 0,
+      timeout INTEGER DEFAULT NULL
+    )
+  `);
+  legacyDb.prepare(`
+    INSERT INTO jobs (id, command, state, updated_at)
+    VALUES (?, ?, ?, ?)
+  `).run("legacy-processing-job", "echo legacy", "processing", "2026-01-01T00:00:00.000Z");
+
+  initDatabase(legacyDb);
+
+  const job = legacyDb
+    .prepare("SELECT processing_started_at FROM jobs WHERE id = ?")
+    .get("legacy-processing-job");
+  expect(job.processing_started_at).toBe("2026-01-01T00:00:00.000Z");
+
+  legacyDb.close();
+});
