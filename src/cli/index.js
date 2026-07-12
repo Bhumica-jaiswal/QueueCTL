@@ -124,9 +124,15 @@ function createProgram({
     .command("list")
     .description("List jobs, optionally filtered by state")
     .option("--state <state>", "Filter jobs by state")
+    .option("--json", "Print jobs as JSON")
     .action((options) => {
       try {
         const jobs = queueService.list({ state: options.state });
+        if (options.json) {
+          console.log(JSON.stringify(jobs, null, 2));
+          return;
+        }
+
         if (jobs.length === 0) {
           console.log("Queue is empty");
           return;
