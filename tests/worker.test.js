@@ -112,6 +112,81 @@ describe("worker processing", () => {
     expect(updated.error).toBe("failure");
   });
 
+  test("worker logs retry scheduling using the persisted retry time", async () => {
+    repo.createJob({
+      id: "job-retry-log",
+      command: "exit 1",
+      state: "pending",
+      max_retries: 3,
+    });
+    const logger = { log: jest.fn(), error: jest.fn() };
+    const executor = {
+      execute: jest.fn().mockResolvedValue({
+        exitCode: 1,
+        stdout: "",
+        stderr: "failure",
+      }),
+    };
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      workerService,
+      workerIdPrefix: "log",
+      pollIntervalMs: 20,
+      logger,
+      executor,
+    });
+
+    manager.start();
+    await sleep(80);
+    await manager.stop();
+
+    const failedJob = repo.findById("job-retry-log");
+    expect(logger.log).toHaveBeenCalledWith(
+      "Worker worker-log-1 picked job job-retry-log (Attempt 1/3)"
+    );
+    expect(logger.log).toHaveBeenCalledWith(
+      `Worker worker-log-1 failed job job-retry-log\n` +
+        "Retry scheduled in 2s\n" +
+        `Next retry at ${failedJob.next_run_at}`
+    );
+  });
+
+  test("worker logs when a failed job moves to the dead letter queue", async () => {
+    repo.createJob({
+      id: "job-dead-log",
+      command: "exit 1",
+      state: "pending",
+      max_retries: 1,
+    });
+    const logger = { log: jest.fn(), error: jest.fn() };
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      workerService,
+      workerIdPrefix: "dead-log",
+      pollIntervalMs: 20,
+      logger,
+      executor: {
+        execute: jest.fn().mockResolvedValue({
+          exitCode: 1,
+          stdout: "",
+          stderr: "failure",
+        }),
+      },
+    });
+
+    manager.start();
+    await sleep(80);
+    await manager.stop();
+
+    expect(logger.log).toHaveBeenCalledWith(
+      "Worker worker-dead-log-1 failed job job-dead-log\n" +
+        "Retries exhausted (1/1).\n" +
+        "Moving job to Dead Letter Queue."
+    );
+  });
+
   test("shutdown prevents worker from claiming new jobs", async () => {
     repo.createJob({ id: "job-running", command: "run first", state: "pending" });
     repo.createJob({ id: "job-waiting", command: "run second", state: "pending" });

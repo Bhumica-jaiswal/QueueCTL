@@ -60,6 +60,31 @@ class Worker {
     });
   }
 
+  logJobFailure(job, failedJob) {
+    if (!failedJob) {
+      this.logger.log(`Worker ${this.id} failed job ${job.id}`);
+      return;
+    }
+
+    if (failedJob?.state === "dead") {
+      this.logger.log(
+        `Worker ${this.id} failed job ${job.id}\n` +
+          `Retries exhausted (${failedJob.attempts}/${failedJob.max_retries}).\n` +
+          "Moving job to Dead Letter Queue."
+      );
+      return;
+    }
+
+    const retryDelaySeconds = Math.round(
+      (Date.parse(failedJob.next_run_at) - Date.parse(failedJob.updated_at)) / 1000
+    );
+    this.logger.log(
+      `Worker ${this.id} failed job ${job.id}\n` +
+        `Retry scheduled in ${retryDelaySeconds}s\n` +
+        `Next retry at ${failedJob.next_run_at}`
+    );
+  }
+
   async runLoop() {
     while (this.isRunning) {
       let claimedJob = null;
@@ -77,7 +102,10 @@ class Worker {
           continue;
         }
 
-        this.logger.log(`Worker ${this.id} picked job ${claimedJob.id}`);
+        this.logger.log(
+          `Worker ${this.id} picked job ${claimedJob.id} ` +
+            `(Attempt ${claimedJob.attempts + 1}/${claimedJob.max_retries})`
+        );
         const result = await this.executor.execute(
           claimedJob.command,
           claimedJob.timeout
@@ -89,13 +117,13 @@ class Worker {
         } else {
           const errorMessage =
             result.stderr || `Command exited with code ${result.exitCode}`;
-          this.queueService.failJob(claimedJob.id, errorMessage);
-          this.logger.log(`Worker ${this.id} failed job ${claimedJob.id}`);
+          const failedJob = this.queueService.failJob(claimedJob.id, errorMessage);
+          this.logJobFailure(claimedJob, failedJob);
         }
       } catch (error) {
         if (claimedJob) {
-          this.queueService.failJob(claimedJob.id, error.message);
-          this.logger.log(`Worker ${this.id} failed job ${claimedJob.id}`);
+          const failedJob = this.queueService.failJob(claimedJob.id, error.message);
+          this.logJobFailure(claimedJob, failedJob);
         } else {
           this.logger.error(`Worker ${this.id} loop error: ${error.message}`);
         }
