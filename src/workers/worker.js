@@ -36,6 +36,7 @@ class Worker {
     this.isStopping = true;
     this.isRunning = false;
     this.workerService?.markWorkerStopping(this.id);
+
     if (this.stopIdleWait) {
       this.stopIdleWait();
       this.stopIdleWait = null;
@@ -66,7 +67,7 @@ class Worker {
       return;
     }
 
-    if (failedJob?.state === "dead") {
+    if (failedJob.state === "dead") {
       this.logger.log(
         `Worker ${this.id} failed job ${job.id}\n` +
           `Retries exhausted (${failedJob.attempts}/${failedJob.max_retries}).\n` +
@@ -78,6 +79,7 @@ class Worker {
     const retryDelaySeconds = Math.round(
       (Date.parse(failedJob.next_run_at) - Date.parse(failedJob.updated_at)) / 1000
     );
+
     this.logger.log(
       `Worker ${this.id} failed job ${job.id}\n` +
         `Retry scheduled in ${retryDelaySeconds}s\n` +
@@ -97,6 +99,7 @@ class Worker {
         }
 
         claimedJob = this.queueService.claimNextJob(this.id);
+
         if (!claimedJob) {
           await this.waitForNextPoll();
           continue;
@@ -106,6 +109,7 @@ class Worker {
           `Worker ${this.id} picked job ${claimedJob.id} ` +
             `(Attempt ${claimedJob.attempts + 1}/${claimedJob.max_retries})`
         );
+
         const result = await this.executor.execute(
           claimedJob.command,
           claimedJob.timeout
@@ -117,12 +121,21 @@ class Worker {
         } else {
           const errorMessage =
             result.stderr || `Command exited with code ${result.exitCode}`;
-          const failedJob = this.queueService.failJob(claimedJob.id, errorMessage);
+
+          const failedJob = this.queueService.failJob(
+            claimedJob.id,
+            errorMessage
+          );
+
           this.logJobFailure(claimedJob, failedJob);
         }
       } catch (error) {
         if (claimedJob) {
-          const failedJob = this.queueService.failJob(claimedJob.id, error.message);
+          const failedJob = this.queueService.failJob(
+            claimedJob.id,
+            error.message
+          );
+
           this.logJobFailure(claimedJob, failedJob);
         } else {
           this.logger.error(`Worker ${this.id} loop error: ${error.message}`);
@@ -132,7 +145,10 @@ class Worker {
           break;
         }
 
-        await sleep(this.pollIntervalMs);
+        // Wait before the next poll. Using waitForNextPoll() preserves the
+        // interruptible polling behavior so worker stop can wake the worker
+        // immediately instead of waiting for the full polling interval.
+        await this.waitForNextPoll();
       }
     }
 
