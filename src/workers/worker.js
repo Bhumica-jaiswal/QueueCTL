@@ -1,7 +1,15 @@
 class Worker {
-  constructor({ id, queueService, executor, pollIntervalMs = 1000, logger = console }) {
+  constructor({
+    id,
+    queueService,
+    workerService = null,
+    executor,
+    pollIntervalMs = 1000,
+    logger = console,
+  }) {
     this.id = id;
     this.queueService = queueService;
+    this.workerService = workerService;
     this.executor = executor;
     this.pollIntervalMs = pollIntervalMs;
     this.logger = logger;
@@ -18,6 +26,7 @@ class Worker {
 
     this.isRunning = true;
     this.isStopping = false;
+    this.workerService?.registerWorker(this.id);
     this.logger.log(`Worker ${this.id} started`);
     this.runPromise = this.runLoop();
     return this.runPromise;
@@ -26,6 +35,7 @@ class Worker {
   async stop() {
     this.isStopping = true;
     this.isRunning = false;
+    this.workerService?.markWorkerStopping(this.id);
     if (this.stopIdleWait) {
       this.stopIdleWait();
       this.stopIdleWait = null;
@@ -55,6 +65,12 @@ class Worker {
       let claimedJob = null;
 
       try {
+        if (this.workerService?.getWorkerStatus(this.id) === "stopping") {
+          this.isStopping = true;
+          this.isRunning = false;
+          break;
+        }
+
         claimedJob = this.queueService.claimNextJob(this.id);
         if (!claimedJob) {
           await this.waitForNextPoll();
@@ -92,7 +108,11 @@ class Worker {
       }
     }
 
-    this.logger.log(`Worker ${this.id} stopped`);
+    try {
+      this.logger.log(`Worker ${this.id} stopped`);
+    } finally {
+      this.workerService?.removeWorker(this.id);
+    }
   }
 }
 

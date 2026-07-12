@@ -41,6 +41,15 @@ const CREATE_CONFIG_TABLE_SQL = `
   )
 `;
 
+const CREATE_WORKERS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS workers (
+    worker_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    started_at TEXT,
+    updated_at TEXT
+  )
+`;
+
 const CREATE_JOBS_STATE_INDEX_SQL = `
   CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs (state)
 `;
@@ -55,6 +64,7 @@ function initDatabase(db = getConnection()) {
     const transaction = db.transaction(() => {
       db.exec(CREATE_JOBS_TABLE_SQL);
       db.exec(CREATE_CONFIG_TABLE_SQL);
+      db.exec(CREATE_WORKERS_TABLE_SQL);
       db.exec(CREATE_JOBS_STATE_INDEX_SQL);
 
       const jobsColumns = db.prepare("PRAGMA table_info(jobs)").all();

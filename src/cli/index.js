@@ -5,6 +5,7 @@ const { getConnection, closeConnection } = require("../database/connection");
 const { initDatabase } = require("../database/init");
 const { createConfigRepository } = require("../repositories/configRepository");
 const { createJobRepository } = require("../repositories/jobRepository");
+const { createWorkerRepository } = require("../repositories/workerRepository");
 const {
   createConfigService,
   ConfigValidationError,
@@ -15,6 +16,7 @@ const {
 } = require("../services/queueService");
 const { createLogService } = require("../services/logService");
 const { createMetricsService } = require("../services/metricsService");
+const { createWorkerService } = require("../services/workerService");
 const { startDashboardServer, DEFAULT_PORT } = require("../dashboard/server");
 const { WorkerManager } = require("../workers/workerManager");
 const {
@@ -22,7 +24,7 @@ const {
   PayloadValidationError,
 } = require("./parseJobPayload");
 
-async function runWorkers(count, queueService) {
+async function runWorkers(count, queueService, workerService) {
   const normalizedCount = Number(count);
   if (!Number.isInteger(normalizedCount) || normalizedCount < 1) {
     throw new QueueValidationError("Worker count must be a positive integer");
@@ -31,6 +33,7 @@ async function runWorkers(count, queueService) {
   const manager = new WorkerManager({
     count: normalizedCount,
     queueService,
+    workerService,
   });
 
   manager.start();
@@ -72,7 +75,13 @@ function formatNullableLogValue(value) {
   return value ?? "None";
 }
 
-function createProgram({ queueService, configService, logService, metricsService }) {
+function createProgram({
+  queueService,
+  configService,
+  logService,
+  metricsService,
+  workerService,
+}) {
   const program = new Command();
 
   program
@@ -156,6 +165,9 @@ function createProgram({ queueService, configService, logService, metricsService
         console.log(`completed: ${status.completed}`);
         console.log(`failed: ${status.failed}`);
         console.log(`dead: ${status.dead}`);
+        console.log(
+          `Active Workers: ${workerService?.getActiveWorkerCount() ?? 0}`
+        );
       } catch (error) {
         console.error(`Failed to read queue status: ${error.message}`);
         process.exitCode = 1;
@@ -305,7 +317,7 @@ function createProgram({ queueService, configService, logService, metricsService
     .option("--count <count>", "Number of workers", "1")
     .action(async (options) => {
       try {
-        await runWorkers(options.count, queueService);
+        await runWorkers(options.count, queueService, workerService);
       } catch (error) {
         if (error instanceof QueueValidationError) {
           console.error(error.message);
@@ -313,6 +325,23 @@ function createProgram({ queueService, configService, logService, metricsService
           console.error(`Failed to start workers: ${error.message}`);
         }
 
+        process.exitCode = 1;
+      }
+    });
+
+  workerCommand
+    .command("stop")
+    .description("Request graceful shutdown for all running workers")
+    .action(() => {
+      try {
+        if (!workerService) {
+          throw new Error("Worker management is not configured");
+        }
+
+        const stoppedWorkers = workerService.stopAllWorkers();
+        console.log(`Requested graceful shutdown for ${stoppedWorkers} worker(s).`);
+      } catch (error) {
+        console.error(`Failed to stop workers: ${error.message}`);
         process.exitCode = 1;
       }
     });
@@ -325,16 +354,19 @@ function main() {
   initDatabase(db);
 
   const jobRepository = createJobRepository(db);
+  const workerRepository = createWorkerRepository(db);
   const configRepository = createConfigRepository(db);
   const configService = createConfigService({ configRepository });
   const queueService = createQueueService({ jobRepository, configService });
   const logService = createLogService({ jobRepository });
   const metricsService = createMetricsService({ jobRepository });
+  const workerService = createWorkerService({ workerRepository });
   const program = createProgram({
     queueService,
     configService,
     logService,
     metricsService,
+    workerService,
   });
 
   return program.parseAsync(process.argv).finally(() => {

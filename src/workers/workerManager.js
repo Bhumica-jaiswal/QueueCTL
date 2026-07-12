@@ -5,12 +5,16 @@ class WorkerManager {
   constructor({
     count,
     queueService,
+    workerService = null,
+    workerIdPrefix = process.pid,
     pollIntervalMs = 1000,
     logger = console,
     executor = createExecutor(),
   }) {
     this.count = count;
     this.queueService = queueService;
+    this.workerService = workerService;
+    this.workerIdPrefix = workerIdPrefix;
     this.pollIntervalMs = pollIntervalMs;
     this.logger = logger;
     this.executor = executor;
@@ -27,8 +31,9 @@ class WorkerManager {
 
     for (let index = 1; index <= this.count; index += 1) {
       const worker = new Worker({
-        id: index,
+        id: `worker-${this.workerIdPrefix}-${index}`,
         queueService: this.queueService,
+        workerService: this.workerService,
         executor: this.executor,
         pollIntervalMs: this.pollIntervalMs,
         logger: this.logger,

@@ -2,8 +2,10 @@ const { createConnection } = require("../src/database/connection");
 const { initDatabase } = require("../src/database/init");
 const { createConfigRepository } = require("../src/repositories/configRepository");
 const { createJobRepository } = require("../src/repositories/jobRepository");
+const { createWorkerRepository } = require("../src/repositories/workerRepository");
 const { createConfigService } = require("../src/services/configService");
 const { createQueueService } = require("../src/services/queueService");
+const { createWorkerService } = require("../src/services/workerService");
 const { WorkerManager } = require("../src/workers/workerManager");
 
 function sleep(ms) {
@@ -28,14 +30,18 @@ describe("worker processing", () => {
   let db;
   let repo;
   let service;
+  let workerRepository;
+  let workerService;
 
   beforeEach(() => {
     db = createConnection({ databasePath: ":memory:" });
     initDatabase(db);
     repo = createJobRepository(db);
+    workerRepository = createWorkerRepository(db);
     const configRepository = createConfigRepository(db);
     const configService = createConfigService({ configRepository });
     service = createQueueService({ jobRepository: repo, configService });
+    workerService = createWorkerService({ workerRepository });
   });
 
   afterEach(() => {
@@ -56,6 +62,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 1,
       queueService: service,
+      workerService,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -90,6 +97,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 1,
       queueService: service,
+      workerService,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -115,6 +123,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 1,
       queueService: service,
+      workerService,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -134,6 +143,26 @@ describe("worker processing", () => {
     expect(executor.execute).toHaveBeenCalledTimes(1);
   });
 
+  test("worker registers on startup and removes itself after a stop request", async () => {
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      workerService,
+      pollIntervalMs: 20,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor: { execute: jest.fn() },
+    });
+
+    manager.start();
+    const workerId = manager.workers[0].id;
+    expect(workerRepository.getWorkerStatus(workerId)).toBe("running");
+
+    workerService.stopAllWorkers();
+    await manager.waitForShutdown();
+
+    expect(workerRepository.getWorkerStatus(workerId)).toBeNull();
+  });
+
   test("shutdown waits for running job to complete", async () => {
     repo.createJob({ id: "job-long", command: "run long", state: "pending" });
     const execution = createDeferred();
@@ -144,6 +173,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 1,
       queueService: service,
+      workerService,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -170,6 +200,37 @@ describe("worker processing", () => {
     expect(repo.findById("job-long").state).toBe("completed");
   });
 
+  test("database stop request lets a worker finish its active job before exiting", async () => {
+    repo.createJob({ id: "job-stop-request", command: "run", state: "pending" });
+    const execution = createDeferred();
+    const executor = {
+      execute: jest.fn().mockReturnValue(execution.promise),
+    };
+    const manager = new WorkerManager({
+      count: 1,
+      queueService: service,
+      workerService,
+      pollIntervalMs: 20,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor,
+    });
+
+    manager.start();
+    while (executor.execute.mock.calls.length === 0) {
+      await sleep(5);
+    }
+
+    const workerId = manager.workers[0].id;
+    workerService.stopAllWorkers();
+    expect(workerRepository.getWorkerStatus(workerId)).toBe("stopping");
+
+    execution.resolve({ exitCode: 0, stdout: "done", stderr: "" });
+    await manager.waitForShutdown();
+
+    expect(repo.findById("job-stop-request").state).toBe("completed");
+    expect(workerRepository.getWorkerStatus(workerId)).toBeNull();
+  });
+
   test("worker passes timeout to executor", async () => {
     repo.createJob({
       id: "job-timeout-pass",
@@ -189,6 +250,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 1,
       queueService: service,
+      workerService,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -220,6 +282,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 1,
       queueService: service,
+      workerService,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -248,6 +311,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 3,
       queueService: service,
+      workerService,
       pollIntervalMs: 20,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -280,6 +344,7 @@ describe("worker processing", () => {
     const manager = new WorkerManager({
       count: 5,
       queueService: service,
+      workerService,
       pollIntervalMs: 10,
       logger: { log: jest.fn(), error: jest.fn() },
       executor,
@@ -295,5 +360,27 @@ describe("worker processing", () => {
     expect(completedJobs).toHaveLength(jobIds.length);
     expect(executedCommands).toHaveLength(jobIds.length);
     expect(uniqueCommands.size).toBe(jobIds.length);
+  });
+
+  test("multiple workers stop independently after one database stop request", async () => {
+    const manager = new WorkerManager({
+      count: 2,
+      queueService: service,
+      workerService,
+      pollIntervalMs: 20,
+      logger: { log: jest.fn(), error: jest.fn() },
+      executor: { execute: jest.fn() },
+    });
+
+    manager.start();
+    const workerIds = manager.workers.map((worker) => worker.id);
+    expect(workerService.getActiveWorkerCount()).toBe(2);
+
+    workerService.stopAllWorkers();
+    await manager.waitForShutdown();
+
+    for (const workerId of workerIds) {
+      expect(workerRepository.getWorkerStatus(workerId)).toBeNull();
+    }
   });
 });

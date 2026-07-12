@@ -12,19 +12,26 @@ const {
   createQueueService,
   QueueValidationError,
 } = require("../src/services/queueService");
+const { createWorkerRepository } = require("../src/repositories/workerRepository");
+const { createWorkerService } = require("../src/services/workerService");
 
 describe("CLI enqueue parsing", () => {
   let db;
   let queueService;
+  let configService;
+  let workerRepository;
+  let workerService;
 
   beforeEach(() => {
     db = createConnection({ databasePath: ":memory:" });
     initDatabase(db);
 
     const jobRepository = createJobRepository(db);
+    workerRepository = createWorkerRepository(db);
     const configRepository = createConfigRepository(db);
-    const configService = createConfigService({ configRepository });
+    configService = createConfigService({ configRepository });
     queueService = createQueueService({ jobRepository, configService });
+    workerService = createWorkerService({ workerRepository });
   });
 
   afterEach(() => {
@@ -227,5 +234,15 @@ describe("CLI enqueue parsing", () => {
         })
       )
     ).toThrow("max_retries must be a non-negative integer");
+  });
+
+  test("worker stop request updates every running worker in the registry", () => {
+    workerService.registerWorker("worker-a");
+    workerService.registerWorker("worker-b");
+
+    expect(workerService.stopAllWorkers()).toBe(2);
+
+    expect(workerRepository.getWorkerStatus("worker-a")).toBe("stopping");
+    expect(workerRepository.getWorkerStatus("worker-b")).toBe("stopping");
   });
 });
