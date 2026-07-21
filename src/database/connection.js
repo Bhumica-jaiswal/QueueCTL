@@ -15,7 +15,7 @@ function createConnection(options = {}) {
       fileMustExist,
     });
 
-    db.pragma("journal_mode = WAL");
+    db.pragma("journal_mode = WAL"); //write ahead logging mode for better concurrency
     db.pragma("foreign_keys = ON");
 
     return db;

@@ -25,6 +25,7 @@ class WorkerManager {
   }
 
   start() {
+//If workers are already running, simply return.
     if (this.workers.length > 0) {
       return;
     }
