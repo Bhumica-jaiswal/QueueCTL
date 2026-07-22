@@ -1,5 +1,6 @@
 function createConfigRepository(db) {
   const getConfigStatement = db.prepare("SELECT value FROM config WHERE key = ?");
+  
   const setConfigStatement = db.prepare(`
     INSERT INTO config (key, value)
     VALUES (?, ?)

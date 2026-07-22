@@ -13,6 +13,7 @@ function createExecutor() {
       let timedOut = false;
 
       const timeoutMs = timeout === null ? null : timeout * 1000;
+    //kill it if it takes too long
       const timeoutId =
         timeoutMs === null
           ? null
@@ -20,7 +21,7 @@ function createExecutor() {
               timedOut = true;
               child.kill();
             }, timeoutMs);
-
+//if the process finishes on its own before the timeout fires, we cancel the pending timer
       function clearTimeoutIfNeeded() {
         if (timeoutId) {
           clearTimeout(timeoutId);
