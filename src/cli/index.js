@@ -312,6 +312,24 @@ function createProgram({
         process.exitCode = 1;
       }
     });
+  configCommand
+  .command("get")
+  .description("Get a queue config value")
+  .argument("<key>", "Config key")
+  .action((key) => {
+    try {
+      const value = configService.getNumber(key);
+      console.log(`${key}=${value}`);
+    } catch (error) {
+      if (error instanceof ConfigValidationError) {
+        console.error(error.message);
+      } else {
+        console.error(`Failed to get config: ${error.message}`);
+      }
+
+      process.exitCode = 1;
+    }
+  }); 
 
   const workerCommand = program
     .command("worker")
